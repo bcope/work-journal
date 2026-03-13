@@ -13,51 +13,12 @@ Usage:
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from datetime import date, timedelta
-from pathlib import Path
 
-import yaml
-from dotenv import load_dotenv
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SRC_DIR = REPO_ROOT / "src" / "work_journal"
-CONFIG_PATH = REPO_ROOT / "work" / "sprint-notes" / "config.yaml"
-
-# Load .env file from repo root
-load_dotenv(REPO_ROOT / ".env")
-
-
-def resolve_env_vars(obj):
-    """Recursively resolve ${ENV_VAR} placeholders in config values."""
-    if isinstance(obj, str):
-
-        def replacer(match):
-            var_name = match.group(1)
-            value = os.environ.get(var_name)
-            if value is None:
-                print(f"Warning: env var {var_name} not set", file=sys.stderr)
-                return match.group(0)
-            return value
-
-        return re.sub(r"\$\{(\w+)\}", replacer, obj)
-    elif isinstance(obj, dict):
-        return {k: resolve_env_vars(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [resolve_env_vars(item) for item in obj]
-    return obj
-
-
-def load_config() -> dict:
-    """Load the repo-level config."""
-    if not CONFIG_PATH.exists():
-        print(f"Error: Config not found at {CONFIG_PATH}", file=sys.stderr)
-        sys.exit(1)
-    with open(CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    return resolve_env_vars(config)
+from work_journal.config import load_config
+from work_journal.paths import SRC_DIR
 
 
 def resolve_dates(yesterday_override: str | None) -> tuple[date, date]:
