@@ -25,6 +25,9 @@ WORK_DIR = REPO_ROOT / "work"
 SPRINT_NOTES_DIR = WORK_DIR / "sprint-notes"
 CONFIG_PATH = SPRINT_NOTES_DIR / "config.yaml"
 PROGRESS_BRIEFS_DIR = WORK_DIR / "progress-briefs"
+PROJECT_STATUS_DIR = WORK_DIR / "project-status"
+PROJECT_STATUS_CONFIG_PATH = PROJECT_STATUS_DIR / "config.yaml"
+PROJECT_CONFIGS_DIR = PROJECT_STATUS_DIR / "project-configs"
 
 # Load .env from repo root — every entry point needs this
 load_dotenv(REPO_ROOT / ".env")
