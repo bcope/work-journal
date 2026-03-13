@@ -65,18 +65,28 @@ def search_repo_prs(repo: str, since: str, until: str) -> list[dict]:
 
     Unlike search_authored_prs/search_reviewed_prs, this returns PRs from
     all contributors — useful for project-scoped status updates.
+
+    Returns an empty list on error instead of exiting, so the caller
+    can continue collecting data from other repos.
     """
-    output = _run_gh(
+    result = subprocess.run(
         [
+            "gh",
             "search",
             "prs",
             f"--repo={repo}",
             f"--updated={since}..{until}",
             "--limit=200",
             f"--json={PR_JSON_FIELDS}",
-        ]
+        ],
+        capture_output=True,
+        text=True,
     )
-    return json.loads(output) if output.strip() else []
+    if result.returncode != 0:
+        print(f"Warning: gh search for {repo} failed:", file=sys.stderr)
+        print(f"  {result.stderr.strip()}", file=sys.stderr)
+        return []
+    return json.loads(result.stdout) if result.stdout.strip() else []
 
 
 def _repo_name(pr: dict) -> str:
