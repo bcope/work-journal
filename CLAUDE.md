@@ -40,11 +40,16 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 - `src/work_journal/jira/` — Jira API queries and CSV parsing
 - `src/work_journal/github/` — GitHub PR queries
 - `src/work_journal/git/` — Local git log queries
+- `src/work_journal/calendar/` — Google Calendar event queries
 - `src/work_journal/claude_code/` — Claude Code activity collection
+- `src/work_journal/collect_project_status.py` — Project status data collection (GitHub, Jira, Calendar)
 - `tests/` — Test suite
 - `work/sprint-notes/` — Sprint note data and drafts. Each sprint is a subdirectory (e.g., `2026-02-A/`).
 - `work/sprint-notes/config.yaml` — Repo-level config (Jira settings, JQL templates, GitHub/git settings, project name mappings). JQL templates use `{account_id}`, `{start_date}`, `{end_date}`, `{sprint_id}` placeholders.
 - `work/sprint-notes/{sprint}/sprint.yaml` — Sprint-level config (just the `sprint_name` field)
+- `work/project-status/` — Project status update data and drafts
+- `work/project-status/config.yaml` — Repo-level config for project status updates
+- `work/project-status/project-configs/` — Per-project config files (e.g., `ggdisburse.yaml`)
 - `work/progress-briefs/` — Quarterly progress brief artifacts (forms, Jira exports, authored docs, drafts)
 - `work/okrs/` — OKR tracking
 - `docs/` — Plans and design documents
@@ -75,6 +80,18 @@ The canonical source for this mapping is `work/sprint-notes/config.yaml` under `
 6. Upload to Google Docs: `/upload-sprint-notes {sprint}`
 
 Steps 3 and 4 are optional but significantly improve draft quality. Step 4 saves its output to files, so re-drafting (step 5) doesn't re-fetch MCP data.
+
+## Project status updates workflow
+
+1. Create project config: `cp work/project-status/project-configs/example.yaml work/project-status/project-configs/{project}.yaml`
+2. Edit the project config with repos, JQL queries, calendar settings
+3. Collect data: `uv run python3 src/work_journal/collect_project_status.py {project} --since YYYY-MM-DD`
+4. Draft via skill: `/project-status {project} --since YYYY-MM-DD --audience slt`
+5. Edit `work/project-status/{project}/{date}/draft.md`
+6. Upload to Google Docs via `md-to-gdoc.js`
+
+Overview mode (no dates): omit `--since` to get a general status based on the
+project's `default_days` setting. Calendar collection is skipped in this mode.
 
 ## Uploading to Google Docs
 
