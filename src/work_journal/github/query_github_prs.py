@@ -60,6 +60,25 @@ def search_reviewed_prs(since: str, until: str, org: str) -> list[dict]:
     return json.loads(output) if output.strip() else []
 
 
+def search_repo_prs(repo: str, since: str, until: str) -> list[dict]:
+    """Search for all PRs in a specific repo within the date range.
+
+    Unlike search_authored_prs/search_reviewed_prs, this returns PRs from
+    all contributors — useful for project-scoped status updates.
+    """
+    output = _run_gh(
+        [
+            "search",
+            "prs",
+            f"--repo={repo}",
+            f"--updated={since}..{until}",
+            "--limit=200",
+            f"--json={PR_JSON_FIELDS}",
+        ]
+    )
+    return json.loads(output) if output.strip() else []
+
+
 def _repo_name(pr: dict) -> str:
     """Extract repository name from a PR object."""
     repo = pr.get("repository", {})
