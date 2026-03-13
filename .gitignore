@@ -1,0 +1,34 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment variables
+.env
+
+# Generated data files - Jira JSON exports (contain PII)
+work/sprint-notes/*/jira/
+
+# Generated data files - enrichment output (contain internal URLs, emails, attendee lists)
+work/sprint-notes/*/email/
+work/sprint-notes/*/calendar/
+work/sprint-notes/*/google-docs/
+work/sprint-notes/*/prior-sprint/
+work/sprint-notes/*/enrichment-summary.md
+work/sprint-notes/*/git/
+work/sprint-notes/*/github/
+
+# Generated data files - Claude Code raw history
+work/sprint-notes/*/claude-code/history-excerpt.jsonl
+
+# Progress brief Jira exports (contain PII)
+work/progress-briefs/*/jira-issues/
+
+# One-off data files
+events-mentioning-ai.json
