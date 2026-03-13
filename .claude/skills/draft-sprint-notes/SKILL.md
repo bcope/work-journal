@@ -41,34 +41,8 @@ If a file is missing, note it and continue with available data.
 **The Jira JSON files are often too large to read directly** (70k+ tokens each). Use a Python one-liner via Bash to extract key fields:
 
 ```bash
-uv run python3 -c "
-import json, re
-for fname, label in [
-    ('jira/sprint-planned-completed.json', 'planned-completed'),
-    ('jira/sprint-planned-incomplete.json', 'planned-incomplete'),
-    ('jira/sprint-added-completed.json', 'added-completed'),
-    ('jira/sprint-added-incomplete.json', 'added-incomplete'),
-    ('jira/non-sprint-completed.json', 'non-sprint-completed'),
-    ('jira/non-sprint-incomplete.json', 'non-sprint-incomplete'),
-    ('jira/non-sprint-non-assigned-with-worklog.json', 'non-sprint-worklog'),
-]:
-    with open(fname) as f:
-        issues = json.load(f)
-    print(f'=== {label} ({len(issues)} issues) ===')
-    for i in issues:
-        fields = i.get('fields', {})
-        key = i.get('key', '?')
-        summary = fields.get('summary', '?')
-        priority = (fields.get('priority') or {}).get('name', '?')
-        itype = (fields.get('issuetype') or {}).get('name', '?')
-        reporter = (fields.get('reporter') or {}).get('displayName', '?')
-        status = (fields.get('status') or {}).get('name', '?')
-        print(f'  {key}: [{itype}/{priority}] {summary} (status: {status}, reporter: {reporter})')
-    print()
-"
+uv run python3 src/work_journal/jira/summarize_issues.py work/sprint-notes/{sprint}
 ```
-
-Run this from the sprint directory (`work/sprint-notes/{sprint}/`).
 
 ### Phase 2: Read enrichment data
 
