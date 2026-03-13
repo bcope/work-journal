@@ -13,63 +13,12 @@ Usage:
 import argparse
 import json
 import os
-import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-import yaml
-from dotenv import load_dotenv
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SRC_DIR = REPO_ROOT / "src" / "work_journal"
-SPRINT_NOTES_DIR = REPO_ROOT / "work" / "sprint-notes"
-CONFIG_PATH = SPRINT_NOTES_DIR / "config.yaml"
-TEMPLATE_DIR = SPRINT_NOTES_DIR / "template-dir-sprint-name"
-
-# Load .env file from repo root
-load_dotenv(REPO_ROOT / ".env")
-
-
-def resolve_env_vars(obj):
-    """Recursively resolve ${ENV_VAR} placeholders in config values."""
-    if isinstance(obj, str):
-
-        def replacer(match):
-            var_name = match.group(1)
-            value = os.environ.get(var_name)
-            if value is None:
-                print(f"Warning: env var {var_name} not set", file=sys.stderr)
-                return match.group(0)
-            return value
-
-        return re.sub(r"\$\{(\w+)\}", replacer, obj)
-    elif isinstance(obj, dict):
-        return {k: resolve_env_vars(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [resolve_env_vars(item) for item in obj]
-    return obj
-
-
-def load_config() -> dict:
-    """Load the repo-level config with env var resolution."""
-    if not CONFIG_PATH.exists():
-        print(f"Error: Config not found at {CONFIG_PATH}", file=sys.stderr)
-        sys.exit(1)
-    with open(CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    return resolve_env_vars(config)
-
-
-def load_sprint_config(sprint_dir: Path) -> dict:
-    """Load the sprint-level config."""
-    sprint_yaml = sprint_dir / "sprint.yaml"
-    if not sprint_yaml.exists():
-        print(f"Error: Sprint config not found at {sprint_yaml}", file=sys.stderr)
-        sys.exit(1)
-    with open(sprint_yaml) as f:
-        return yaml.safe_load(f)
+from work_journal.config import load_config, load_sprint_config
+from work_journal.paths import REPO_ROOT, SPRINT_NOTES_DIR, SRC_DIR
 
 
 def run_helper(script: str, args: list[str], output_path: Path | None = None) -> str:
@@ -256,15 +205,16 @@ def collect_claude_code_activity(
 
 
 def ensure_sprint_dir(sprint_name: str) -> Path:
-    """Ensure the sprint directory exists, creating from template if needed."""
+    """Return the sprint directory path, erroring if it doesn't exist."""
     sprint_dir = SPRINT_NOTES_DIR / sprint_name
     if not sprint_dir.exists():
-        if TEMPLATE_DIR.exists():
-            print(f"Creating sprint directory from template: {sprint_dir.relative_to(REPO_ROOT)}")
-            shutil.copytree(TEMPLATE_DIR, sprint_dir)
-        else:
-            print(f"Creating sprint directory: {sprint_dir.relative_to(REPO_ROOT)}")
-            sprint_dir.mkdir(parents=True)
+        print(
+            f"Error: Sprint directory {sprint_dir.relative_to(REPO_ROOT)} does not exist.\n"
+            f"Create it first with: uv run python3 src/work_journal/scaffold.py"
+            f' sprint {sprint_name} --var sprint_name="YOUR-SPRINT-NAME"',
+            file=sys.stderr,
+        )
+        sys.exit(1)
     return sprint_dir
 
 
@@ -299,14 +249,6 @@ def main():
         sys.exit(1)
 
     sprint_config = load_sprint_config(sprint_dir)
-    if sprint_config.get("sprint_name") == "REPLACE-ME":
-        print(
-            f"Error: sprint_name in {sprint_yaml_path.relative_to(REPO_ROOT)}"
-            " is still 'REPLACE-ME'.\n"
-            "Set it to the actual Jira sprint name.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
     # Resolve sprint to get dates and ID
     print(f"Resolving sprint: {sprint_config['sprint_name']}")
