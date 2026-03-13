@@ -6,8 +6,8 @@ name to dates via the Jira Agile API, then runs all configured data collection
 steps and writes outputs to the sprint directory.
 
 Usage:
-    uv run python3 src/collect.py 2026-02-A
-    uv run python3 src/collect.py 2026-02-A --dry-run
+    uv run python3 src/work_journal/collect.py 2026-02-A
+    uv run python3 src/work_journal/collect.py 2026-02-A --dry-run
 """
 
 import argparse
@@ -22,8 +22,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC_DIR = REPO_ROOT / "src"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SRC_DIR = REPO_ROOT / "src" / "work_journal"
 SPRINT_NOTES_DIR = REPO_ROOT / "work" / "sprint-notes"
 CONFIG_PATH = SPRINT_NOTES_DIR / "config.yaml"
 TEMPLATE_DIR = SPRINT_NOTES_DIR / "template-dir-sprint-name"
@@ -35,6 +35,7 @@ load_dotenv(REPO_ROOT / ".env")
 def resolve_env_vars(obj):
     """Recursively resolve ${ENV_VAR} placeholders in config values."""
     if isinstance(obj, str):
+
         def replacer(match):
             var_name = match.group(1)
             value = os.environ.get(var_name)
@@ -42,7 +43,8 @@ def resolve_env_vars(obj):
                 print(f"Warning: env var {var_name} not set", file=sys.stderr)
                 return match.group(0)
             return value
-        return re.sub(r'\$\{(\w+)\}', replacer, obj)
+
+        return re.sub(r"\$\{(\w+)\}", replacer, obj)
     elif isinstance(obj, dict):
         return {k: resolve_env_vars(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -75,7 +77,7 @@ def run_helper(script: str, args: list[str], output_path: Path | None = None) ->
 
     If output_path is given, write stdout to that file instead of returning it.
     """
-    cmd = [sys.executable, str(SRC_DIR / script)] + args
+    cmd = [sys.executable, str(SRC_DIR / script), *args]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"  Warning: {script} failed (exit {result.returncode})", file=sys.stderr)
@@ -162,9 +164,7 @@ def collect_jira_issues(sprint_dir: Path, config: dict, variables: dict) -> None
                 print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
 
 
-def collect_github_prs(
-    sprint_dir: Path, config: dict, start_date: str, end_date: str
-) -> None:
+def collect_github_prs(sprint_dir: Path, config: dict, start_date: str, end_date: str) -> None:
     """Collect GitHub PR data."""
     gh_config = config.get("github", {})
     org = gh_config.get("org", os.environ.get("GITHUB_ORG", ""))
@@ -182,9 +182,7 @@ def collect_github_prs(
         print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
 
 
-def collect_git_commits(
-    sprint_dir: Path, config: dict, start_date: str, end_date: str
-) -> None:
+def collect_git_commits(sprint_dir: Path, config: dict, start_date: str, end_date: str) -> None:
     """Collect local git commit data."""
     git_config = config.get("git", {})
     repos_dir = os.path.expanduser(git_config.get("repos_dir", "~/git"))
@@ -207,15 +205,20 @@ def collect_claude_code_activity(
 ) -> None:
     """Collect Claude Code session activity data."""
     cc_config = config.get("claude_code", {})
-    history_path = os.path.expanduser(cc_config.get(
-        "history_path", os.environ.get("CLAUDE_HISTORY_PATH", "~/.claude/history.jsonl")
-    ))
-    stats_cache_path = os.path.expanduser(cc_config.get(
-        "stats_cache_path", os.environ.get("CLAUDE_STATS_CACHE_PATH", "~/.claude/stats-cache.json")
-    ))
-    projects_path = os.path.expanduser(cc_config.get(
-        "projects_path", os.environ.get("CLAUDE_PROJECTS_PATH", "~/.claude/projects")
-    ))
+    history_path = os.path.expanduser(
+        cc_config.get(
+            "history_path", os.environ.get("CLAUDE_HISTORY_PATH", "~/.claude/history.jsonl")
+        )
+    )
+    stats_cache_path = os.path.expanduser(
+        cc_config.get(
+            "stats_cache_path",
+            os.environ.get("CLAUDE_STATS_CACHE_PATH", "~/.claude/stats-cache.json"),
+        )
+    )
+    projects_path = os.path.expanduser(
+        cc_config.get("projects_path", os.environ.get("CLAUDE_PROJECTS_PATH", "~/.claude/projects"))
+    )
     work_dirs = [os.path.expanduser(d) for d in cc_config.get("work_dirs", ["~/git"])]
     output_file = cc_config.get("output", "claude-code/sessions.md")
     docs_output_file = cc_config.get("documents_output", "claude-code/documents.md")
@@ -224,19 +227,26 @@ def collect_claude_code_activity(
     raw_dir = sprint_dir / "claude-code"
 
     helper_args = [
-        "--since", start_date,
-        "--until", end_date,
-        "--history-path", history_path,
-        "--stats-cache-path", stats_cache_path,
-        "--projects-path", projects_path,
-        "--copy-raw", str(raw_dir),
-        "--documents-output", str(docs_output_path),
+        "--since",
+        start_date,
+        "--until",
+        end_date,
+        "--history-path",
+        history_path,
+        "--stats-cache-path",
+        stats_cache_path,
+        "--projects-path",
+        projects_path,
+        "--copy-raw",
+        str(raw_dir),
+        "--documents-output",
+        str(docs_output_path),
     ]
     for wd in work_dirs:
         helper_args.extend(["--work-dirs", wd])
 
     print(f"  Claude Code activity: {start_date} to {end_date}")
-    output = run_helper(
+    run_helper(
         "claude_code/collect_activity.py",
         helper_args,
         output_path=output_path,
@@ -283,7 +293,7 @@ def main():
         print(
             f"Error: No sprint.yaml found in {sprint_dir.relative_to(REPO_ROOT)}.\n"
             f"Create one with at least:\n"
-            f"  sprint_name: \"your-sprint-name-here\"",
+            f'  sprint_name: "your-sprint-name-here"',
             file=sys.stderr,
         )
         sys.exit(1)
@@ -291,8 +301,9 @@ def main():
     sprint_config = load_sprint_config(sprint_dir)
     if sprint_config.get("sprint_name") == "REPLACE-ME":
         print(
-            f"Error: sprint_name in {sprint_yaml_path.relative_to(REPO_ROOT)} is still 'REPLACE-ME'.\n"
-            f"Set it to the actual Jira sprint name.",
+            f"Error: sprint_name in {sprint_yaml_path.relative_to(REPO_ROOT)}"
+            " is still 'REPLACE-ME'.\n"
+            "Set it to the actual Jira sprint name.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -316,7 +327,7 @@ def main():
 
     if args.dry_run:
         print("Dry run — would collect:")
-        print(f"  Sprint info -> jira/sprint-info.json")
+        print("  Sprint info -> jira/sprint-info.json")
         for name, qc in config["jira"].get("queries", {}).items():
             raw_jql = qc["jql"]
             if raw_jql == "TODO":
@@ -329,7 +340,9 @@ def main():
         git_cfg = config.get("git", {})
         print(f"  Git commits: repos_dir={git_cfg.get('repos_dir')} -> {git_cfg.get('output')}")
         cc_cfg = config.get("claude_code", {})
-        print(f"  Claude Code activity: work_dirs={cc_cfg.get('work_dirs', ['~/git'])} -> {cc_cfg.get('output', 'claude-code/sessions.md')}")
+        cc_work = cc_cfg.get("work_dirs", ["~/git"])
+        cc_out = cc_cfg.get("output", "claude-code/sessions.md")
+        print(f"  Claude Code activity: work_dirs={cc_work} -> {cc_out}")
         return
 
     # Collect everything

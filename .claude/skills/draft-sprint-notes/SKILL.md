@@ -11,7 +11,7 @@ Generate a polished sprint notes document from collected data. The user will spe
 
 Before running this skill, the user should have:
 
-1. Collected data using `src/collect.py` (at minimum, `jira/sprint-info.json` and some Jira query results)
+1. Collected data using `src/work_journal/collect.py` (at minimum, `jira/sprint-info.json` and some Jira query results)
 2. Optionally run `/enrich-sprint-data {sprint}` to gather Gmail, Calendar, Google Docs, and Jira comment context
 
 GitHub data, git commits, Claude Code sessions, manual notes, and enrichment output are all optional but improve the draft significantly.

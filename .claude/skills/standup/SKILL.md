@@ -16,13 +16,13 @@ Use this skill when the user asks to prepare their daily stand-up, or says `/sta
 Run the collection script:
 
 ```bash
-uv run python3 src/standup.py
+uv run python3 src/work_journal/standup.py
 ```
 
 If the user specifies a particular "yesterday" date, pass it:
 
 ```bash
-uv run python3 src/standup.py --yesterday YYYY-MM-DD
+uv run python3 src/work_journal/standup.py --yesterday YYYY-MM-DD
 ```
 
 Read the markdown output from stdout.

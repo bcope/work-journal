@@ -7,8 +7,18 @@ Tools and workflows for collecting work data and drafting sprint notes and progr
 Always use `uv run python3` to run scripts. Use `uv add` to install dependencies.
 
 ```bash
-uv run python3 src/collect.py 2026-02-A
-uv run python3 src/jira/query_sprint_info.py --sprint-name "2026-02-A-Product-February"
+uv run python3 src/work_journal/collect.py 2026-02-A
+uv run python3 src/work_journal/jira/query_sprint_info.py --sprint-name "2026-02-A-Product-February"
+```
+
+## Development commands
+
+```bash
+uv run ruff check .           # Lint
+uv run ruff format .          # Format
+uv run mypy src/              # Type check
+uv run pytest                 # Test
+uv run pre-commit run --all-files  # All pre-commit hooks
 ```
 
 ## Key identifiers
@@ -22,8 +32,13 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 
 ## Project structure
 
-- `src/` — Python scripts (collection, queries, parsing)
-- `src/collect.py` — Main orchestrator: reads config, resolves sprint dates via Jira API, runs all collection steps
+- `src/work_journal/` — Python package (collection, queries, parsing)
+- `src/work_journal/collect.py` — Main orchestrator: reads config, resolves sprint dates via Jira API, runs all collection steps
+- `src/work_journal/jira/` — Jira API queries and CSV parsing
+- `src/work_journal/github/` — GitHub PR queries
+- `src/work_journal/git/` — Local git log queries
+- `src/work_journal/claude_code/` — Claude Code activity collection
+- `tests/` — Test suite
 - `work/sprint-notes/` — Sprint note data and drafts. Each sprint is a subdirectory (e.g., `2026-02-A/`).
 - `work/sprint-notes/config.yaml` — Repo-level config (Jira settings, JQL templates, GitHub/git settings, project name mappings). JQL templates use `{account_id}`, `{start_date}`, `{end_date}`, `{sprint_id}` placeholders.
 - `work/sprint-notes/{sprint}/sprint.yaml` — Sprint-level config (just the `sprint_name` field)
@@ -51,7 +66,7 @@ The canonical source for this mapping is `work/sprint-notes/config.yaml` under `
 
 1. Create sprint directory: `cp -r work/sprint-notes/template-dir-sprint-name work/sprint-notes/{sprint}`
 2. Set `sprint_name` in `work/sprint-notes/{sprint}/sprint.yaml`
-3. Collect data: `uv run python3 src/collect.py {sprint}`
+3. Collect data: `uv run python3 src/work_journal/collect.py {sprint}`
 4. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
 5. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
 6. Draft via skill: `/draft-sprint-notes {sprint}`

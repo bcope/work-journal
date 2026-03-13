@@ -9,7 +9,6 @@ import os
 import subprocess
 import sys
 
-
 DEFAULT_REPOS_DIR = os.path.expanduser(os.environ.get("GIT_REPOS_DIR", "~/git"))
 DEFAULT_AUTHOR = os.environ.get("GIT_AUTHOR", "")
 
@@ -33,7 +32,8 @@ def get_commits(
     """Run git log in a repo and return list of oneline commit strings."""
     result = subprocess.run(
         [
-            "git", "log",
+            "git",
+            "log",
             f"--author={author}",
             f"--after={since}",
             f"--before={until}",
@@ -50,9 +50,7 @@ def get_commits(
     return [line for line in lines if line]
 
 
-def format_markdown(
-    results: dict[str, list[str]], since: str, until: str, author: str
-) -> str:
+def format_markdown(results: dict[str, list[str]], since: str, until: str, author: str) -> str:
     """Format commit data as markdown grouped by repo."""
     lines: list[str] = []
     lines.append(f"# Git Commits ({since} to {until})")

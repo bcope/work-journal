@@ -11,8 +11,10 @@ Metrics extracted per session:
 - Documents: files created/modified via Write/Edit tool calls
 
 Usage:
-    uv run python3 src/claude_code/collect_activity.py --since 2026-02-13 --until 2026-02-26
-    uv run python3 src/claude_code/collect_activity.py --since 2026-02-13 --until 2026-02-26 --copy-raw DIR
+    uv run python3 src/work_journal/claude_code/collect_activity.py \
+        --since 2026-02-13 --until 2026-02-26
+    uv run python3 src/work_journal/claude_code/collect_activity.py \
+        --since 2026-02-13 --until 2026-02-26 --copy-raw DIR
 """
 
 import argparse
@@ -21,7 +23,7 @@ import os
 import shutil
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_HISTORY_PATH = os.path.expanduser(
@@ -33,9 +35,7 @@ DEFAULT_STATS_CACHE_PATH = os.path.expanduser(
 DEFAULT_PROJECTS_PATH = os.path.expanduser(
     os.environ.get("CLAUDE_PROJECTS_PATH", "~/.claude/projects")
 )
-DEFAULT_WORK_DIRS = [os.path.expanduser(
-    os.environ.get("CLAUDE_WORK_DIRS", "~/git")
-)]
+DEFAULT_WORK_DIRS = [os.path.expanduser(os.environ.get("CLAUDE_WORK_DIRS", "~/git"))]
 
 # Tool call categories for Tier 2 breakdown
 TOOL_CATEGORIES = {
@@ -51,10 +51,7 @@ TOOL_CATEGORIES = {
 
 def is_work_project(project_path: str, work_dirs: list[str]) -> bool:
     """Check if a project path is under one of the configured work directories."""
-    for work_dir in work_dirs:
-        if project_path.startswith(work_dir):
-            return True
-    return False
+    return any(project_path.startswith(work_dir) for work_dir in work_dirs)
 
 
 def project_slug(project_path: str) -> str:
@@ -79,15 +76,10 @@ def load_history(
     entries per session in history.jsonl). Returns only the first entry per
     session (used for display text and timestamp).
     """
-    start_ts = int(
-        datetime.strptime(start_date, "%Y-%m-%d")
-        .replace(tzinfo=timezone.utc)
-        .timestamp()
-        * 1000
-    )
+    start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC).timestamp() * 1000)
     end_ts = int(
         datetime.strptime(end_date, "%Y-%m-%d")
-        .replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        .replace(hour=23, minute=59, second=59, tzinfo=UTC)
         .timestamp()
         * 1000
     )
@@ -124,9 +116,8 @@ def categorize_tool(tool_name: str) -> str:
         if isinstance(matcher, set):
             if tool_name in matcher:
                 return category
-        elif isinstance(matcher, str):
-            if tool_name.startswith(matcher):
-                return category
+        elif isinstance(matcher, str) and tool_name.startswith(matcher):
+            return category
     return "Other"
 
 
@@ -138,14 +129,12 @@ def _parse_timestamp_ms(timestamp_str) -> int | None:
             return int(ts.timestamp() * 1000)
         except ValueError:
             return None
-    elif isinstance(timestamp_str, (int, float)):
+    elif isinstance(timestamp_str, int | float):
         return int(timestamp_str)
     return None
 
 
-def analyze_conversation(
-    projects_path: str, project_path: str, session_id: str
-) -> dict:
+def analyze_conversation(projects_path: str, project_path: str, session_id: str) -> dict:
     """Read a conversation JSONL file and extract all metrics in a single pass.
 
     Returns dict with:
@@ -158,7 +147,8 @@ def analyze_conversation(
         last_timestamp: ISO string
         thinking_time_ms: sum of turn_duration system entries
         turn_count: number of turns (turn_duration entries)
-        documents: dict of file_path -> {operations, write_chars, edit_net_chars, first_op, first_op_ts}
+        documents: dict of file_path -> {operations, write_chars,
+            edit_net_chars, first_op, first_op_ts}
     """
     slug = project_slug(project_path)
     conversation_file = os.path.join(projects_path, slug, f"{session_id}.jsonl")
@@ -240,13 +230,16 @@ def analyze_conversation(
 
                         if tool_name == "Write":
                             content_str = inp.get("content", "")
-                            doc = result["documents"].setdefault(file_path, {
-                                "operations": [],
-                                "write_chars": 0,
-                                "edit_net_chars": 0,
-                                "first_op": None,
-                                "first_op_ts": None,
-                            })
+                            doc = result["documents"].setdefault(
+                                file_path,
+                                {
+                                    "operations": [],
+                                    "write_chars": 0,
+                                    "edit_net_chars": 0,
+                                    "first_op": None,
+                                    "first_op_ts": None,
+                                },
+                            )
                             doc["operations"].append("write")
                             doc["write_chars"] += len(content_str)
                             if doc["first_op"] is None:
@@ -256,25 +249,26 @@ def analyze_conversation(
                         elif tool_name == "Edit":
                             old = inp.get("old_string", "")
                             new = inp.get("new_string", "")
-                            doc = result["documents"].setdefault(file_path, {
-                                "operations": [],
-                                "write_chars": 0,
-                                "edit_net_chars": 0,
-                                "first_op": None,
-                                "first_op_ts": None,
-                            })
+                            doc = result["documents"].setdefault(
+                                file_path,
+                                {
+                                    "operations": [],
+                                    "write_chars": 0,
+                                    "edit_net_chars": 0,
+                                    "first_op": None,
+                                    "first_op_ts": None,
+                                },
+                            )
                             doc["operations"].append("edit")
                             doc["edit_net_chars"] += len(new) - len(old)
                             if doc["first_op"] is None:
                                 doc["first_op"] = "edit"
                                 doc["first_op_ts"] = timestamp_str
 
-            elif entry_type == "system":
-                # Extract turn_duration for thinking time
-                if entry.get("subtype") == "turn_duration":
-                    duration = entry.get("durationMs", 0)
-                    result["thinking_time_ms"] += duration
-                    result["turn_count"] += 1
+            elif entry_type == "system" and entry.get("subtype") == "turn_duration":
+                duration = entry.get("durationMs", 0)
+                result["thinking_time_ms"] += duration
+                result["turn_count"] += 1
 
     if first_ts is not None and last_ts is not None:
         result["duration_ms"] = last_ts - first_ts
@@ -337,9 +331,7 @@ def format_markdown(
         for s in sessions
     )
     total_turns = sum(
-        s["metrics"]["turn_count"]
-        for sessions in sessions_by_project.values()
-        for s in sessions
+        s["metrics"]["turn_count"] for sessions in sessions_by_project.values() for s in sessions
     )
     total_tool_calls = sum(
         sum(s["metrics"]["tool_calls"].values())
@@ -389,9 +381,7 @@ def format_markdown(
     for project_path in sorted(sessions_by_project):
         sessions = sessions_by_project[project_path]
         name = repo_name(project_path)
-        project_thinking = sum(
-            s["metrics"]["thinking_time_ms"] for s in sessions
-        )
+        project_thinking = sum(s["metrics"]["thinking_time_ms"] for s in sessions)
         lines.append(
             f"### {name} ({len(sessions)} sessions, thinking: {format_duration(project_thinking)})"
         )
@@ -401,9 +391,7 @@ def format_markdown(
 
         for s in sessions:
             metrics = s["metrics"]
-            ts = datetime.fromtimestamp(
-                s["timestamp"] / 1000, tz=timezone.utc
-            )
+            ts = datetime.fromtimestamp(s["timestamp"] / 1000, tz=UTC)
             ts_str = ts.strftime("%Y-%m-%d %H:%M")
             thinking = format_duration(metrics["thinking_time_ms"])
             turns = metrics["turn_count"]
@@ -463,15 +451,13 @@ def _is_noise_path(file_path: str) -> bool:
     if file_path.startswith(claude_dir + "/"):
         return True
     # Exclude /tmp/ files
-    if file_path.startswith("/tmp/"):
-        return True
-    return False
+    return bool(file_path.startswith("/tmp/"))
 
 
 def _make_relative(file_path: str, project_path: str) -> str:
     """Make a file path relative to its project root."""
     if file_path.startswith(project_path + "/"):
-        return file_path[len(project_path) + 1:]
+        return file_path[len(project_path) + 1 :]
     return file_path
 
 
@@ -502,8 +488,7 @@ def format_documents_markdown(
                     existing["edit_net_chars"] += doc["edit_net_chars"]
                     # Keep earliest first_op
                     if doc["first_op_ts"] and (
-                        not existing["first_op_ts"]
-                        or doc["first_op_ts"] < existing["first_op_ts"]
+                        not existing["first_op_ts"] or doc["first_op_ts"] < existing["first_op_ts"]
                     ):
                         existing["first_op"] = doc["first_op"]
                         existing["first_op_ts"] = doc["first_op_ts"]
@@ -547,7 +532,7 @@ def format_documents_markdown(
                 if doc["first_op_ts"]:
                     ts_parsed = _parse_timestamp_ms(doc["first_op_ts"])
                     if ts_parsed:
-                        dt = datetime.fromtimestamp(ts_parsed / 1000, tz=timezone.utc)
+                        dt = datetime.fromtimestamp(ts_parsed / 1000, tz=UTC)
                         ts = f" — {dt.strftime('%Y-%m-%d')}"
                 chars = _format_chars(doc["write_chars"]) if doc["write_chars"] else "0"
                 edits = doc["operations"].count("edit")
@@ -639,9 +624,7 @@ def main():
         sys.exit(1)
 
     # Load and filter history
-    sessions = load_history(
-        args.history_path, args.since, args.until, args.work_dirs
-    )
+    sessions = load_history(args.history_path, args.since, args.until, args.work_dirs)
 
     if not sessions:
         print(
@@ -661,9 +644,7 @@ def main():
     sessions_by_project: dict[str, list[dict]] = defaultdict(list)
     for session_id, entry in sessions.items():
         project_path = entry["project"]
-        metrics = analyze_conversation(
-            args.projects_path, project_path, session_id
-        )
+        metrics = analyze_conversation(args.projects_path, project_path, session_id)
         sessions_by_project[project_path].append(
             {
                 "session_id": session_id,
@@ -689,9 +670,7 @@ def main():
         # Write filtered history excerpt
         excerpt_path = raw_dir / "history-excerpt.jsonl"
         with open(excerpt_path, "w") as f:
-            for session_id, entry in sorted(
-                sessions.items(), key=lambda x: x[1]["timestamp"]
-            ):
+            for _session_id, entry in sorted(sessions.items(), key=lambda x: x[1]["timestamp"]):
                 f.write(json.dumps(entry) + "\n")
         print(
             f"Wrote {len(sessions)} entries to {excerpt_path}",
@@ -702,9 +681,7 @@ def main():
     if args.documents_output:
         docs_path = Path(args.documents_output)
         docs_path.parent.mkdir(parents=True, exist_ok=True)
-        docs_md = format_documents_markdown(
-            sessions_by_project, args.since, args.until
-        )
+        docs_md = format_documents_markdown(sessions_by_project, args.since, args.until)
         with open(docs_path, "w") as f:
             f.write(docs_md)
         print(f"Wrote documents report to {docs_path}", file=sys.stderr)

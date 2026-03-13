@@ -6,10 +6,10 @@ Auth is handled by the gh CLI (must be logged in via `gh auth login`).
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from collections import defaultdict
-
 
 PR_JSON_FIELDS = "number,title,url,state,createdAt,updatedAt,closedAt,repository"
 
@@ -17,7 +17,7 @@ PR_JSON_FIELDS = "number,title,url,state,createdAt,updatedAt,closedAt,repository
 def _run_gh(args: list[str]) -> str:
     """Run a gh command and return stdout."""
     result = subprocess.run(
-        ["gh"] + args,
+        ["gh", *args],
         capture_output=True,
         text=True,
     )
@@ -30,27 +30,33 @@ def _run_gh(args: list[str]) -> str:
 
 def search_authored_prs(since: str, until: str, org: str) -> list[dict]:
     """Search for PRs authored by the current user in the date range."""
-    output = _run_gh([
-        "search", "prs",
-        "--author=@me",
-        f"--created={since}..{until}",
-        f"--owner={org}",
-        "--limit=200",
-        f"--json={PR_JSON_FIELDS}",
-    ])
+    output = _run_gh(
+        [
+            "search",
+            "prs",
+            "--author=@me",
+            f"--created={since}..{until}",
+            f"--owner={org}",
+            "--limit=200",
+            f"--json={PR_JSON_FIELDS}",
+        ]
+    )
     return json.loads(output) if output.strip() else []
 
 
 def search_reviewed_prs(since: str, until: str, org: str) -> list[dict]:
     """Search for PRs reviewed by the current user in the date range."""
-    output = _run_gh([
-        "search", "prs",
-        "--reviewed-by=@me",
-        f"--updated={since}..{until}",
-        f"--owner={org}",
-        "--limit=200",
-        f"--json={PR_JSON_FIELDS}",
-    ])
+    output = _run_gh(
+        [
+            "search",
+            "prs",
+            "--reviewed-by=@me",
+            f"--updated={since}..{until}",
+            f"--owner={org}",
+            "--limit=200",
+            f"--json={PR_JSON_FIELDS}",
+        ]
+    )
     return json.loads(output) if output.strip() else []
 
 
@@ -134,7 +140,8 @@ def main():
         help="Output format (default: json)",
     )
     parser.add_argument(
-        "--pretty", "-p",
+        "--pretty",
+        "-p",
         action="store_true",
         help="Pretty-print JSON output (ignored for markdown)",
     )

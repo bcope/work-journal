@@ -19,10 +19,12 @@ API_V3 = f"{JIRA_URL}/rest/api/3"
 
 def _make_session() -> requests.Session:
     session = requests.Session()
-    session.headers.update({
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    })
+    session.headers.update(
+        {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+    )
     session.auth = (JIRA_USER, JIRA_API_TOKEN)
     return session
 
@@ -118,13 +120,15 @@ def main():
     )
     parser.add_argument("jql", help="JQL query string")
     parser.add_argument(
-        "--fields", "-f",
+        "--fields",
+        "-f",
         nargs="+",
         default=None,
         help="Issue fields to retrieve (e.g. summary status assignee)",
     )
     parser.add_argument(
-        "--max-results", "-m",
+        "--max-results",
+        "-m",
         type=int,
         default=None,
         help="Maximum number of issues to return (default: all)",
@@ -136,7 +140,8 @@ def main():
         help="Number of issues per API page (default: 100)",
     )
     parser.add_argument(
-        "--pretty", "-p",
+        "--pretty",
+        "-p",
         action="store_true",
         help="Pretty-print JSON output",
     )
@@ -144,7 +149,10 @@ def main():
     args = parser.parse_args()
 
     if not JIRA_USER or not JIRA_API_TOKEN:
-        print("Error: JIRA_USER and JIRA_API_TOKEN environment variables must be set.", file=sys.stderr)
+        print(
+            "Error: JIRA_USER and JIRA_API_TOKEN environment variables must be set.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     try:

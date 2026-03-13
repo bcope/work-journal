@@ -22,10 +22,12 @@ JIRA_SPRINT_START_ID = int(os.environ.get("JIRA_SPRINT_START_ID", "0"))
 
 def _make_session() -> requests.Session:
     session = requests.Session()
-    session.headers.update({
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    })
+    session.headers.update(
+        {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+    )
     session.auth = (JIRA_USER, JIRA_API_TOKEN)
     return session
 
@@ -74,9 +76,7 @@ def get_sprint(session: requests.Session, sprint_id: int) -> dict:
     return resp.json()
 
 
-def find_sprint_by_name(
-    session: requests.Session, board_id: int, name: str
-) -> dict | None:
+def find_sprint_by_name(session: requests.Session, board_id: int, name: str) -> dict | None:
     """Search all sprints on a board for one matching the given name.
 
     Searches across all states (future, active, closed) and returns the
@@ -119,7 +119,8 @@ def main():
         help="List sprints filtered by state: future, active, closed (comma-separated)",
     )
     parser.add_argument(
-        "--pretty", "-p",
+        "--pretty",
+        "-p",
         action="store_true",
         help="Pretty-print JSON output",
     )
@@ -143,7 +144,8 @@ def main():
             result = find_sprint_by_name(session, args.board_id, args.sprint_name)
             if result is None:
                 print(
-                    f"Error: No sprint matching '{args.sprint_name}' found on board {args.board_id}.",
+                    f"Error: No sprint matching '{args.sprint_name}'"
+                    f" found on board {args.board_id}.",
                     file=sys.stderr,
                 )
                 sys.exit(1)

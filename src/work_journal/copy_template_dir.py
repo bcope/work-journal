@@ -1,4 +1,5 @@
-from typing import Callable
+from collections.abc import Callable
+
 
 def format_quarter(quarter_str: str) -> str:
     return quarter_str

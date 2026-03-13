@@ -6,7 +6,7 @@ Usage:
     python3 parse_jira_csv.py <path-to-csv> [--output <output-file>]
 
 Examples:
-    python3 parse_jira_csv.py ../progress-briefs/2025-Q4/jira-issues/2025-Q4-assigned-jira-issues.csv
+    python3 parse_jira_csv.py path/to/2025-Q4-assigned-jira-issues.csv
     python3 parse_jira_csv.py issues.csv --output summary.md
 """
 
@@ -18,7 +18,7 @@ from collections import Counter
 def parse_jira_csv(csv_path):
     """Parse a Jira CSV export and return structured issue data."""
     issues = []
-    with open(csv_path, "r", encoding="utf-8") as f:
+    with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             issues.append(
@@ -59,9 +59,7 @@ def render_markdown(issues, summary):
     lines.append("## By Project\n")
     lines.append("| Project | Count |")
     lines.append("| ------- | ----- |")
-    for project, count in sorted(
-        summary["by_project"].items(), key=lambda x: -x[1]
-    ):
+    for project, count in sorted(summary["by_project"].items(), key=lambda x: -x[1]):
         lines.append(f"| {project} | {count} |")
     lines.append("")
 
@@ -75,9 +73,7 @@ def render_markdown(issues, summary):
     lines.append("## By Issue Type\n")
     lines.append("| Type | Count |")
     lines.append("| ---- | ----- |")
-    for issue_type, count in sorted(
-        summary["by_type"].items(), key=lambda x: -x[1]
-    ):
+    for issue_type, count in sorted(summary["by_type"].items(), key=lambda x: -x[1]):
         lines.append(f"| {issue_type} | {count} |")
     lines.append("")
 
@@ -87,8 +83,7 @@ def render_markdown(issues, summary):
     for i in sorted(issues, key=lambda x: x["project_key"]):
         truncated = i["summary"][:100]
         lines.append(
-            f"| {i['key']} | {i['issue_type']} | {i['status']} "
-            f"| {i['project_key']} | {truncated} |"
+            f"| {i['key']} | {i['issue_type']} | {i['status']} | {i['project_key']} | {truncated} |"
         )
     lines.append("")
 
@@ -101,9 +96,7 @@ def render_plain(issues, summary):
     lines.append(f"Total issues: {summary['total']}\n")
 
     lines.append("By project:")
-    for project, count in sorted(
-        summary["by_project"].items(), key=lambda x: -x[1]
-    ):
+    for project, count in sorted(summary["by_project"].items(), key=lambda x: -x[1]):
         lines.append(f"  {project}: {count}")
     lines.append("")
 
@@ -122,13 +115,9 @@ def render_plain(issues, summary):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Parse a Jira CSV export and produce a summary."
-    )
+    parser = argparse.ArgumentParser(description="Parse a Jira CSV export and produce a summary.")
     parser.add_argument("csv_path", help="Path to the Jira CSV export file")
-    parser.add_argument(
-        "--output", "-o", help="Output file path (default: stdout)", default=None
-    )
+    parser.add_argument("--output", "-o", help="Output file path (default: stdout)", default=None)
     parser.add_argument(
         "--format",
         "-f",

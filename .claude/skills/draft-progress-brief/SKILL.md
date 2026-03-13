@@ -13,7 +13,7 @@ Use this skill when the user asks to draft a quarterly progress brief, performan
 
 1. **Read the form(s)** in `work/progress-briefs/<YEAR>-<QUARTER>/format/` to understand the questions and instructions.
 2. **Read the evidence:**
-   - Parse Jira CSV exports in `work/progress-briefs/<YEAR>-<QUARTER>/jira-issues/` using `src/parse-jira-csv.py` or by reading the CSV directly. The CSV format is the most structured; the RSS XML is an alternative.
+   - Parse Jira CSV exports in `work/progress-briefs/<YEAR>-<QUARTER>/jira-issues/` using `src/work_journal/jira/parse_jira_csv.py` or by reading the CSV directly. The CSV format is the most structured; the RSS XML is an alternative.
    - Read all documents in `work/progress-briefs/<YEAR>-<QUARTER>/docs/`. These are authored memos, sprint notes, and investigation notes that provide narrative context for the work.
    - Note: Some files may contain embedded base64 images making them very large. Use `cut -c1-2000` via Bash to truncate long lines when the Read tool fails due to file size.
 3. **Synthesize the evidence** into answers for each form question:

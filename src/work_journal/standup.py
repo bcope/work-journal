@@ -5,9 +5,9 @@ for yesterday's completed work, today's in-progress work, and blockers. Outputs
 markdown (default) or JSON to stdout.
 
 Usage:
-    uv run python3 src/standup.py
-    uv run python3 src/standup.py --yesterday 2026-03-03
-    uv run python3 src/standup.py --json
+    uv run python3 src/work_journal/standup.py
+    uv run python3 src/work_journal/standup.py --yesterday 2026-03-03
+    uv run python3 src/work_journal/standup.py --json
 """
 
 import argparse
@@ -22,8 +22,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC_DIR = REPO_ROOT / "src"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SRC_DIR = REPO_ROOT / "src" / "work_journal"
 CONFIG_PATH = REPO_ROOT / "work" / "sprint-notes" / "config.yaml"
 
 # Load .env file from repo root
@@ -33,6 +33,7 @@ load_dotenv(REPO_ROOT / ".env")
 def resolve_env_vars(obj):
     """Recursively resolve ${ENV_VAR} placeholders in config values."""
     if isinstance(obj, str):
+
         def replacer(match):
             var_name = match.group(1)
             value = os.environ.get(var_name)
@@ -40,7 +41,8 @@ def resolve_env_vars(obj):
                 print(f"Warning: env var {var_name} not set", file=sys.stderr)
                 return match.group(0)
             return value
-        return re.sub(r'\$\{(\w+)\}', replacer, obj)
+
+        return re.sub(r"\$\{(\w+)\}", replacer, obj)
     elif isinstance(obj, dict):
         return {k: resolve_env_vars(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -75,7 +77,7 @@ def resolve_dates(yesterday_override: str | None) -> tuple[date, date]:
 
 def run_helper(script: str, args: list[str]) -> str:
     """Run a helper script and return stdout."""
-    cmd = [sys.executable, str(SRC_DIR / script)] + args
+    cmd = [sys.executable, str(SRC_DIR / script), *args]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"  Warning: {script} failed (exit {result.returncode})", file=sys.stderr)
@@ -89,7 +91,9 @@ def run_command(cmd: list[str]) -> str:
     """Run a shell command and return stdout."""
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"  Warning: {' '.join(cmd[:3])}... failed (exit {result.returncode})", file=sys.stderr)
+        print(
+            f"  Warning: {' '.join(cmd[:3])}... failed (exit {result.returncode})", file=sys.stderr
+        )
         if result.stderr:
             print(f"  {result.stderr.strip()}", file=sys.stderr)
         return ""
@@ -117,7 +121,7 @@ def query_jira(jql: str) -> list[dict]:
 
 def query_github_prs(args: list[str]) -> str:
     """Run a gh search command and return raw output."""
-    cmd = ["gh", "search", "prs"] + args
+    cmd = ["gh", "search", "prs", *args]
     return run_command(cmd)
 
 
@@ -159,19 +163,22 @@ def collect_data(config: dict, yesterday: date, today: date) -> dict:
     # --- Yesterday: completed Jira issues ---
     completed_jql_template = standup_queries.get("completed_yesterday", {}).get(
         "jql",
-        'assignee = {account_id} AND updated >= "{yesterday}" AND updated < "{today}" AND statusCategory = Done',
+        'assignee = {account_id} AND updated >= "{yesterday}"'
+        ' AND updated < "{today}" AND statusCategory = Done',
     )
     completed_jql = template_jql(completed_jql_template, variables)
     data["completed"]["jira"] = query_jira(completed_jql)
 
     # --- Yesterday: merged PRs ---
-    data["completed"]["prs"] = query_github_prs([
-        f"--author={git_author}",
-        f"--merged={yesterday_str}..{today_str}",
-        f"--owner={org}",
-        "--limit=50",
-        "--json=number,title,url,repository",
-    ])
+    data["completed"]["prs"] = query_github_prs(
+        [
+            f"--author={git_author}",
+            f"--merged={yesterday_str}..{today_str}",
+            f"--owner={org}",
+            "--limit=50",
+            "--json=number,title,url,repository",
+        ]
+    )
 
     # --- Yesterday: git commits ---
     data["completed"]["commits"] = query_git_log(config, yesterday_str, today_str)
@@ -185,13 +192,15 @@ def collect_data(config: dict, yesterday: date, today: date) -> dict:
     data["in_progress"]["jira"] = query_jira(in_progress_jql)
 
     # --- Today: open PRs ---
-    data["in_progress"]["prs"] = query_github_prs([
-        f"--author={git_author}",
-        "--state=open",
-        f"--owner={org}",
-        "--limit=50",
-        "--json=number,title,url,repository,state",
-    ])
+    data["in_progress"]["prs"] = query_github_prs(
+        [
+            f"--author={git_author}",
+            "--state=open",
+            f"--owner={org}",
+            "--limit=50",
+            "--json=number,title,url,repository,state",
+        ]
+    )
 
     # --- Blocked ---
     blocked_jql_template = standup_queries.get("blocked", {}).get("jql", "")
