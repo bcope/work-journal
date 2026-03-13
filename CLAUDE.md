@@ -33,6 +33,9 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 ## Project structure
 
 - `src/work_journal/` — Python package (collection, queries, parsing)
+- `src/work_journal/paths.py` — Centralized path constants (repo root, config path, work dirs)
+- `src/work_journal/config.py` — Shared config loading with env var resolution
+- `src/work_journal/scaffold.py` — Config-driven directory scaffolding
 - `src/work_journal/collect.py` — Main orchestrator: reads config, resolves sprint dates via Jira API, runs all collection steps
 - `src/work_journal/jira/` — Jira API queries and CSV parsing
 - `src/work_journal/github/` — GitHub PR queries
@@ -64,16 +67,14 @@ The canonical source for this mapping is `work/sprint-notes/config.yaml` under `
 
 ## Sprint notes workflow
 
-1. Create sprint directory: `cp -r work/sprint-notes/template-dir-sprint-name work/sprint-notes/{sprint}`
-2. Set `sprint_name` in `work/sprint-notes/{sprint}/sprint.yaml`
-3. Collect data: `uv run python3 src/work_journal/collect.py {sprint}`
-4. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
-5. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
-6. Draft via skill: `/draft-sprint-notes {sprint}`
+1. Scaffold sprint directory: `uv run python3 src/work_journal/scaffold.py sprint {sprint} --var sprint_name="{jira-sprint-name}"`
+2. Collect data: `uv run python3 src/work_journal/collect.py {sprint}`
+3. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
+4. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
+5. Draft via skill: `/draft-sprint-notes {sprint}`
+6. Upload to Google Docs: `/upload-sprint-notes {sprint}`
 
-7. Upload to Google Docs: `/upload-sprint-notes {sprint}`
-
-Steps 4 and 5 are optional but significantly improve draft quality. Step 5 saves its output to files, so re-drafting (step 6) doesn't re-fetch MCP data.
+Steps 3 and 4 are optional but significantly improve draft quality. Step 4 saves its output to files, so re-drafting (step 5) doesn't re-fetch MCP data.
 
 ## Uploading to Google Docs
 
