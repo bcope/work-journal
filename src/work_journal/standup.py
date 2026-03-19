@@ -30,6 +30,7 @@ from work_journal.git.query_git_log import find_git_repos, get_commits
 from work_journal.git.query_git_log import format_markdown as format_git_markdown
 from work_journal.github.query_github_prs import search_merged_prs, search_open_prs
 from work_journal.jira.query_issues import search_issues
+from work_journal.jira.query_sprint_info import DEFAULT_BOARD_ID, _make_session, list_sprints
 from work_journal.paths import STANDUP_DIR
 
 
@@ -134,6 +135,18 @@ def collect_claude_activity(config: dict, yesterday: date, today: date) -> dict 
     }
 
 
+def get_active_sprint_id() -> str:
+    """Return the ID of the active sprint, or empty string if unavailable."""
+    try:
+        session = _make_session()
+        sprints = list_sprints(session, DEFAULT_BOARD_ID, state="active")
+        if sprints:
+            return str(sprints[0]["id"])
+    except Exception:
+        pass
+    return ""
+
+
 def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
     """Collect all stand-up data from Jira, GitHub, and git."""
     account_id = os.environ["JIRA_ACCOUNT_ID"]
@@ -143,11 +156,13 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
 
     yesterday_str = yesterday.isoformat()
     today_str = today.isoformat()
+    sprint_id = get_active_sprint_id()
 
     variables = {
         "account_id": account_id,
         "yesterday": yesterday_str,
         "today": today_str,
+        "sprint_id": sprint_id,
     }
 
     data = {
@@ -156,6 +171,7 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
         "completed": {"jira": [], "prs": [], "commits": ""},
         "in_progress": {"jira": [], "prs": []},
         "blocked": {"jira": []},
+        "injected": {"jira": []},
     }
 
     # --- Yesterday: completed Jira issues ---
@@ -190,6 +206,12 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
     if blocked_jql_template:
         blocked_jql = template_jql(blocked_jql_template, variables)
         data["blocked"]["jira"] = query_jira(blocked_jql)
+
+    # --- Injected (added to sprint recently) ---
+    injected_jql_template = standup_queries.get("injected", {}).get("jql", "")
+    if injected_jql_template and sprint_id:
+        injected_jql = template_jql(injected_jql_template, variables)
+        data["injected"]["jira"] = query_jira(injected_jql)
 
     # --- Claude Code activity ---
     data["claude_code"] = collect_claude_activity(standup_config, yesterday, today)
@@ -349,6 +371,15 @@ def format_markdown(data: dict, project_names: dict) -> str:
     has_today = in_progress_jira or has_open_prs
     if not has_today:
         lines.append("Nothing tracked.")
+        lines.append("")
+
+    # --- Injected ---
+    injected_jira = data["injected"]["jira"]
+    if injected_jira:
+        lines.append("## Injected into sprint")
+        lines.append("")
+        for issue in injected_jira:
+            lines.append(format_jira_issue(issue, project_names))
         lines.append("")
 
     # --- Blockers ---

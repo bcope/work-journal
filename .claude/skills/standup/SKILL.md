@@ -41,7 +41,7 @@ Present the final stand-up notes to the user. Apply light editorial polish:
 - Group related Jira issues and PRs that are part of the same effort
 - Flag items that have been in progress for multiple days (if visible from the data)
 - If today's calendar has relevant meetings, add a brief note under "What I'm doing today" (e.g., "Also: Sprint planning at 2pm")
-- Keep the three-section format: Yesterday / Today / Blockers
+- Keep the standard section format: Yesterday / Today / Injected into sprint (if any) / Blockers
 - **Claude Code section:** Show the full per-repo breakdown for ALL repos. Format as a totals line followed by a bullet per repo, each showing (N sessions, ~Xh Ym thinking, Z messages). Sort by sessions or thinking time descending. Never truncate or summarize into "and others."
 
 The output should be ready to copy into Slack or read aloud in a stand-up meeting. Keep it concise — aim for quick readability, not exhaustive detail.
