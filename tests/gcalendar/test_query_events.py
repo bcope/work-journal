@@ -1,6 +1,6 @@
 """Tests for calendar event querying."""
 
-from work_journal.calendar.query_events import filter_events_by_keywords, format_event
+from work_journal.gcalendar.query_events import filter_events_by_keywords, format_event
 
 
 def test_filter_events_by_keywords_matches():

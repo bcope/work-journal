@@ -9,6 +9,8 @@ import os
 import subprocess
 import sys
 
+from work_journal.dates import midnight_iso
+
 DEFAULT_REPOS_DIR = os.path.expanduser(os.environ.get("GIT_REPOS_DIR", "~/git"))
 DEFAULT_AUTHOR = os.environ.get("GIT_AUTHOR", "")
 
@@ -35,8 +37,8 @@ def get_commits(
             "git",
             "log",
             f"--author={author}",
-            f"--after={since}",
-            f"--before={until}",
+            f"--after={midnight_iso(since)}",
+            f"--before={midnight_iso(until)}",
             "--oneline",
             "--no-merges",
         ],

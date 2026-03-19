@@ -1,6 +1,6 @@
 """Create work directories from config-driven templates.
 
-Reads template definitions from config.yaml and creates directory structures
+Reads template definitions from templates/ directory and creates directory structures
 with variable substitution in file contents.
 
 Usage:
@@ -13,7 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from work_journal.config import load_config
+from work_journal.config import list_templates, load_template
 from work_journal.paths import REPO_ROOT
 
 
@@ -71,15 +71,14 @@ def scaffold(
 
 
 def main():
-    config = load_config()
-    templates = config.get("templates", {})
+    available = list_templates()
 
     parser = argparse.ArgumentParser(
         description="Create work directories from config-driven templates.",
     )
     parser.add_argument(
         "template",
-        choices=list(templates.keys()) if templates else [],
+        choices=available if available else [],
         help="Template type to scaffold",
     )
     parser.add_argument(
@@ -104,7 +103,7 @@ def main():
         key, value = var_str.split("=", 1)
         variables[key] = value
 
-    template = templates[args.template]
+    template = load_template(args.template)
     required = template.get("required_vars", [])
     validate_vars(variables, required)
 

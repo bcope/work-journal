@@ -42,11 +42,12 @@ Present the final stand-up notes to the user. Apply light editorial polish:
 - Flag items that have been in progress for multiple days (if visible from the data)
 - If today's calendar has relevant meetings, add a brief note under "What I'm doing today" (e.g., "Also: Sprint planning at 2pm")
 - Keep the three-section format: Yesterday / Today / Blockers
+- **Claude Code section:** Show the full per-repo breakdown for ALL repos. Format as a totals line followed by a bullet per repo, each showing (N sessions, ~Xh Ym thinking, Z messages). Sort by sessions or thinking time descending. Never truncate or summarize into "and others."
 
 The output should be ready to copy into Slack or read aloud in a stand-up meeting. Keep it concise — aim for quick readability, not exhaustive detail.
 
 ## Notes
 
-- The script reads config from `work/sprint-notes/config.yaml` (Jira account ID, GitHub org, git settings)
-- Blocker detection depends on the `standup.queries.blocked.jql` template in config.yaml — if it contains a placeholder condition, blockers will be empty until the user customizes it
+- The script reads config from `config/standup.yaml` and `config/shared.yaml` (Jira account ID, GitHub org, git settings)
+- Blocker detection depends on the `queries.blocked.jql` template in `config/standup.yaml` — if it contains a placeholder condition, blockers will be empty until the user customizes it
 - On Mondays, "yesterday" automatically refers to the previous Friday

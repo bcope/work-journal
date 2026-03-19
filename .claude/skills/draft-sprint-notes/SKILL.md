@@ -69,7 +69,7 @@ If enrichment files don't exist, proceed with available data. The draft will hav
 
 #### Map to project themes
 
-Map Jira project keys to readable names (from `config.yaml` `project_names`). Group issues, PRs, and commits under project themes. If work spans multiple projects but serves a single initiative, group by initiative instead.
+Map Jira project keys to readable names (from `config/shared.yaml` `project_names`). Group issues, PRs, and commits under project themes. If work spans multiple projects but serves a single initiative, group by initiative instead.
 
 #### Identify key accomplishments
 

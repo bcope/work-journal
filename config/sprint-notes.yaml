@@ -1,0 +1,70 @@
+# Configuration for sprint notes data collection.
+# Identity fields (Jira account, GitHub org, git author, etc.) come from
+# environment variables. See .env.example.
+
+jira:
+  queries:
+    sprint_planned_completed:
+      description: "Issues in the sprint at start that were completed during the sprint"
+      jql: "assignee = {account_id} AND sprint = {sprint_id} AND statusCategory = Done AND labels not in (added_to_sprint-current, added_to_sprint-id-{sprint_id})"
+      output: "jira/sprint-planned-completed.json"
+
+    sprint_planned_incomplete:
+      description: "Issues in the sprint at start that were NOT completed by sprint end"
+      jql: "assignee = {account_id} AND sprint = {sprint_id} AND statusCategory != Done AND labels not in (added_to_sprint-current, added_to_sprint-id-{sprint_id})"
+      output: "jira/sprint-planned-incomplete.json"
+
+    sprint_added_completed:
+      description: "Issues added to the sprint after start, completed during the sprint"
+      jql: "assignee = {account_id} AND sprint = {sprint_id} AND statusCategory = Done AND labels in (added_to_sprint-current, added_to_sprint-id-{sprint_id})"
+      output: "jira/sprint-added-completed.json"
+
+    sprint_added_incomplete:
+      description: "Issues added to the sprint after start, not completed by sprint end"
+      jql: "assignee = {account_id} AND sprint = {sprint_id} AND statusCategory != Done AND labels in (added_to_sprint-current, added_to_sprint-id-{sprint_id})"
+      output: "jira/sprint-added-incomplete.json"
+
+    non_sprint_completed:
+      description: "Issues assigned to user, completed in the date range, never in this sprint"
+      jql: "assignee = {account_id} AND sprint != {sprint_id} AND statusCategory = Done AND resolved >= {start_date} AND resolved <= {end_date}"
+      output: "jira/non-sprint-completed.json"
+
+    non_sprint_incomplete:
+      description: "Issues assigned to user, updated in the date range, never in this sprint, still open"
+      jql: "assignee = {account_id} AND sprint != {sprint_id} AND statusCategory != Done AND worklogDate >= {start_date} AND worklogDate <= {end_date} AND worklogAuthor = {account_id}"
+      output: "jira/non-sprint-incomplete.json"
+
+    non_assigned_with_worklog:
+      description: "Issues not assigned to user, but with worklogs by user in the date range, never in this sprint"
+      jql: "assignee != {account_id} AND sprint != {sprint_id} AND worklogDate >= {start_date} AND worklogDate <= {end_date} AND worklogAuthor = {account_id}"
+      output: "jira/non-sprint-non-assigned-with-worklog.json"
+
+github:
+  output: "github/prs.md"
+  format: markdown
+
+git:
+  output: "git/commit-log.md"
+
+gmail:
+  queries:
+    sent_mail:
+      query: "from:me after:{start_date_slash} before:{end_date_slash}"
+      output: "email/sent.md"
+    highlighted_mail:
+      query: TODO
+      output: "email/highlights.md"
+    incoming_requests:
+      query: TODO
+      output: "email/requests.md"
+
+calendar:
+  calendar_id: primary
+  output: "calendar/events.md"
+
+claude_code:
+  output: "claude-code/sessions.md"
+  documents_output: "claude-code/documents.md"
+
+google_drive:
+  upload_folder: "${SPRINT_NOTES_FOLDER}"

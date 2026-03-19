@@ -1,0 +1,7 @@
+base_dir: work/progress-briefs
+naming: "{name}"
+subdirs:
+  - jira-issues
+  - docs
+files: {}
+required_vars: []

@@ -1,0 +1,9 @@
+# Configuration for daily stand-up notes generation.
+
+queries:
+  completed_yesterday:
+    jql: "assignee = {account_id} AND updated >= \"{yesterday}\" AND updated < \"{today}\" AND statusCategory = Done"
+  in_progress:
+    jql: "assignee = {account_id} AND status = \"In Progress\""
+  blocked:
+    jql: ""

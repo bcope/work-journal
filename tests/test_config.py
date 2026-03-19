@@ -40,12 +40,35 @@ def test_resolve_env_vars_passthrough():
     assert resolve_env_vars(None) is None
 
 
-def test_load_config_returns_dict():
-    from work_journal.config import load_config
+def test_load_shared_config_returns_dict():
+    from work_journal.config import load_shared_config
 
-    config = load_config()
+    config = load_shared_config()
+    assert isinstance(config, dict)
+    assert "project_names" in config
+
+
+def test_load_sprint_notes_config_returns_dict():
+    from work_journal.config import load_sprint_notes_config
+
+    config = load_sprint_notes_config()
     assert isinstance(config, dict)
     assert "jira" in config
+
+
+def test_load_standup_config_returns_dict():
+    from work_journal.config import load_standup_config
+
+    config = load_standup_config()
+    assert isinstance(config, dict)
+    assert "queries" in config
+
+
+def test_load_project_status_config_returns_dict():
+    from work_journal.config import load_project_status_config
+
+    config = load_project_status_config()
+    assert isinstance(config, dict)
 
 
 def test_load_sprint_config(tmp_path):
@@ -62,3 +85,27 @@ def test_load_sprint_config_missing(tmp_path):
 
     with pytest.raises(SystemExit):
         load_sprint_config(tmp_path)
+
+
+def test_load_template_returns_dict():
+    from work_journal.config import load_template
+
+    template = load_template("sprint")
+    assert isinstance(template, dict)
+    assert "base_dir" in template
+    assert "subdirs" in template
+
+
+def test_load_template_missing():
+    from work_journal.config import load_template
+
+    with pytest.raises(SystemExit):
+        load_template("nonexistent")
+
+
+def test_list_templates():
+    from work_journal.config import list_templates
+
+    templates = list_templates()
+    assert "sprint" in templates
+    assert "progress-brief" in templates

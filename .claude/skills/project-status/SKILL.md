@@ -87,10 +87,10 @@ selected audience.
 Write a concise status update. Structure:
 
 ```markdown
-# {Project Name} -- Status Update
+# {today} - {Project Name} -- Status Update
 
 **Period:** {since} to {until}
-**Generated:** {today}
+**Updated:** {today}
 
 ## Summary
 
@@ -131,10 +131,10 @@ Guidelines:
 Write a detailed status update. Structure:
 
 ```markdown
-# {Project Name} -- Status Update
+# {today} - {Project Name} -- Status Update
 
 **Period:** {since} to {until}
-**Generated:** {today}
+**Updated:** {today}
 
 ## Summary
 
@@ -191,7 +191,9 @@ Tell the user:
 
 1. The draft is at `{run_dir}/draft.md`
 2. Edit as needed, then upload via:
-   `node $MD_TO_GDOC_SCRIPT upload {run_dir}/draft.md --title "{Project Name} Status Update {date}"`
+   `node $MD_TO_GDOC_SCRIPT upload {run_dir}/draft.md --title "{Project Name} Status Update {date}" --folder "{upload_folder}"`
+   where `{upload_folder}` comes from the project config's `google_drive.upload_folder`.
+   If `upload_folder` is empty, omit the `--folder` flag.
 
 ## Tips
 
@@ -206,5 +208,5 @@ Tell the user:
 - Cross-reference: if a PR references a Jira issue, connect them in the
   narrative. If a calendar meeting preceded a burst of PR activity, note the
   connection.
-- The `project_names` mapping in `work/project-status/config.yaml` translates
+- The `project_names` mapping in `config/shared.yaml` translates
   Jira project keys to readable names.

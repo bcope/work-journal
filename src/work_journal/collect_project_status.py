@@ -1,6 +1,6 @@
 """Collect project status data from GitHub, Jira, and Google Calendar.
 
-Reads work/project-status/config.yaml for repo defaults and
+Reads config/project-status.yaml for repo defaults and
 work/project-status/project-configs/<project>.yaml for per-project settings.
 Writes output to work/project-status/<project>/<date>[-n]/.
 
@@ -12,30 +12,24 @@ Usage:
 
 import argparse
 import json
-import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
 
-from work_journal.config import resolve_env_vars
+from work_journal.config import load_project_status_config
+from work_journal.gcalendar.query_events import (
+    filter_events_by_keywords,
+    format_event,
+    query_events,
+)
+from work_journal.jira.query_issues import search_issues
 from work_journal.paths import (
     PROJECT_CONFIGS_DIR,
-    PROJECT_STATUS_CONFIG_PATH,
     PROJECT_STATUS_DIR,
     REPO_ROOT,
 )
-
-
-def load_config() -> dict:
-    """Load the repo-level project-status config with env var resolution."""
-    if not PROJECT_STATUS_CONFIG_PATH.exists():
-        print(f"Error: Config not found at {PROJECT_STATUS_CONFIG_PATH}", file=sys.stderr)
-        sys.exit(1)
-    with open(PROJECT_STATUS_CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    return resolve_env_vars(config)
 
 
 def load_project_config(project_name: str) -> dict:
@@ -104,7 +98,7 @@ def collect_github_prs(
 def collect_jira_issues(
     run_dir: Path, project_config: dict, since: str | None, until: str | None
 ) -> None:
-    """Run the project's Jira queries via the query_issues.py script."""
+    """Run the project's Jira queries."""
     queries = project_config.get("jira", {}).get("queries", {})
     if not queries:
         print("  No Jira queries configured, skipping.")
@@ -117,31 +111,18 @@ def collect_jira_issues(
         output_path = run_dir / "jira" / f"{name}.json"
         print(f"  Jira query '{name}': {jql}")
 
-        cmd = [
-            sys.executable,
-            str(REPO_ROOT / "src" / "work_journal" / "jira" / "query_issues.py"),
-            jql,
-            "--pretty",
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(
-                f"  Warning: Jira query '{name}' failed (exit {result.returncode})",
-                file=sys.stderr,
-            )
-            if result.stderr:
-                print(f"  {result.stderr.strip()}", file=sys.stderr)
+        try:
+            issues = search_issues(jql)
+        except Exception as e:
+            print(f"  Warning: Jira query '{name}' failed: {e}", file=sys.stderr)
             continue
 
-        if result.stdout.strip():
+        if issues:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w") as f:
-                f.write(result.stdout)
-            try:
-                count = len(json.loads(result.stdout))
-                print(f"  Wrote {output_path.relative_to(REPO_ROOT)} ({count} issues)")
-            except json.JSONDecodeError:
-                print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
+                json.dump(issues, f, indent=2)
+                f.write("\n")
+            print(f"  Wrote {output_path.relative_to(REPO_ROOT)} ({len(issues)} issues)")
 
 
 def collect_calendar_events(run_dir: Path, project_config: dict, since: str, until: str) -> None:
@@ -155,37 +136,26 @@ def collect_calendar_events(run_dir: Path, project_config: dict, since: str, unt
         return
 
     output_path = run_dir / "calendar" / "events.json"
-    cmd = [
-        sys.executable,
-        str(REPO_ROOT / "src" / "work_journal" / "calendar" / "query_events.py"),
-        "--since",
-        since,
-        "--until",
-        until,
-    ]
-    for cal_id in calendar_ids:
-        cmd.extend(["--calendar-id", cal_id])
-    if keywords:
-        cmd.extend(["--keywords", *keywords])
-    cmd.append("--pretty")
-
     print(f"  Calendar events: {since} to {until}, keywords={keywords}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"  Warning: Calendar query failed (exit {result.returncode})", file=sys.stderr)
-        if result.stderr:
-            print(f"  {result.stderr.strip()}", file=sys.stderr)
+
+    try:
+        all_events: list[dict] = []
+        for cal_id in calendar_ids:
+            events = query_events(cal_id, since, until)
+            all_events.extend(events)
+
+        filtered = filter_events_by_keywords(all_events, keywords)
+        formatted = [format_event(e) for e in filtered]
+    except Exception as e:
+        print(f"  Warning: Calendar query failed: {e}", file=sys.stderr)
         return
 
-    if result.stdout.strip():
+    if formatted:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
-            f.write(result.stdout)
-        try:
-            count = len(json.loads(result.stdout))
-            print(f"  Wrote {output_path.relative_to(REPO_ROOT)} ({count} events)")
-        except json.JSONDecodeError:
-            print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
+            json.dump(formatted, f, indent=2)
+            f.write("\n")
+        print(f"  Wrote {output_path.relative_to(REPO_ROOT)} ({len(formatted)} events)")
 
 
 def main():
@@ -210,7 +180,7 @@ def main():
     args = parser.parse_args()
     today = date.today().isoformat()
 
-    config = load_config()
+    config = load_project_status_config()
     project_config = load_project_config(args.project)
 
     # Resolve dates

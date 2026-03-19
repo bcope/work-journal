@@ -5,7 +5,7 @@ directory is configured via the GDOCS_MCP_DIR environment variable.
 The calendar.readonly scope is already granted in the existing token.
 
 Usage:
-    uv run python3 src/work_journal/calendar/query_events.py \
+    uv run python3 src/work_journal/gcalendar/query_events.py \
         --since 2026-02-01 --until 2026-03-01 \
         --calendar-id primary \
         --keywords "GGDisburse" "disbursement" \

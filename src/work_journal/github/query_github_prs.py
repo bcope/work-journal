@@ -11,20 +11,27 @@ import subprocess
 import sys
 from collections import defaultdict
 
+from work_journal.dates import midnight_iso
+
 PR_JSON_FIELDS = "number,title,url,state,createdAt,updatedAt,closedAt,repository"
 
 
+class GhError(Exception):
+    """Raised when a gh CLI command fails."""
+
+
 def _run_gh(args: list[str]) -> str:
-    """Run a gh command and return stdout."""
+    """Run a gh command and return stdout.
+
+    Raises GhError on non-zero exit code.
+    """
     result = subprocess.run(
         ["gh", *args],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        print(f"Error running gh {' '.join(args)}:", file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
-        sys.exit(1)
+        raise GhError(f"gh {' '.join(args)}: {result.stderr.strip()}")
     return result.stdout
 
 
@@ -35,7 +42,7 @@ def search_authored_prs(since: str, until: str, org: str) -> list[dict]:
             "search",
             "prs",
             "--author=@me",
-            f"--created={since}..{until}",
+            f"--created={midnight_iso(since)}..{midnight_iso(until)}",
             f"--owner={org}",
             "--limit=200",
             f"--json={PR_JSON_FIELDS}",
@@ -51,7 +58,7 @@ def search_reviewed_prs(since: str, until: str, org: str) -> list[dict]:
             "search",
             "prs",
             "--reviewed-by=@me",
-            f"--updated={since}..{until}",
+            f"--updated={midnight_iso(since)}..{midnight_iso(until)}",
             f"--owner={org}",
             "--limit=200",
             f"--json={PR_JSON_FIELDS}",
@@ -75,7 +82,7 @@ def search_repo_prs(repo: str, since: str, until: str) -> list[dict]:
             "search",
             "prs",
             f"--repo={repo}",
-            f"--updated={since}..{until}",
+            f"--updated={midnight_iso(since)}..{midnight_iso(until)}",
             "--limit=200",
             f"--json={PR_JSON_FIELDS}",
         ],
@@ -84,6 +91,64 @@ def search_repo_prs(repo: str, since: str, until: str) -> list[dict]:
     )
     if result.returncode != 0:
         print(f"Warning: gh search for {repo} failed:", file=sys.stderr)
+        print(f"  {result.stderr.strip()}", file=sys.stderr)
+        return []
+    return json.loads(result.stdout) if result.stdout.strip() else []
+
+
+def search_merged_prs(since: str, until: str, org: str, author: str | None = None) -> list[dict]:
+    """Search for PRs merged in the date range.
+
+    Returns an empty list on error instead of exiting.
+    """
+    author_flag = f"--author={author}" if author else "--author=@me"
+    result = subprocess.run(
+        [
+            "gh",
+            "search",
+            "prs",
+            author_flag,
+            f"--merged-at={midnight_iso(since)}..{midnight_iso(until)}",
+            f"--owner={org}",
+            "--limit=50",
+            f"--json={PR_JSON_FIELDS}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print("Warning: gh search merged PRs failed:", file=sys.stderr)
+        print(f"  {result.stderr.strip()}", file=sys.stderr)
+        return []
+    return json.loads(result.stdout) if result.stdout.strip() else []
+
+
+def search_open_prs(org: str, author: str | None = None, since: str | None = None) -> list[dict]:
+    """Search for open PRs owned by the author.
+
+    When *since* is provided (YYYY-MM-DD), only PRs updated since that date
+    are returned.  Returns an empty list on error instead of exiting.
+    """
+    author_flag = f"--author={author}" if author else "--author=@me"
+    cmd = [
+        "gh",
+        "search",
+        "prs",
+        author_flag,
+        "--state=open",
+        f"--owner={org}",
+        "--limit=50",
+        f"--json={PR_JSON_FIELDS}",
+    ]
+    if since:
+        cmd.insert(-1, f"--updated={midnight_iso(since)}..")
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print("Warning: gh search open PRs failed:", file=sys.stderr)
         print(f"  {result.stderr.strip()}", file=sys.stderr)
         return []
     return json.loads(result.stdout) if result.stdout.strip() else []
@@ -177,8 +242,12 @@ def main():
 
     args = parser.parse_args()
 
-    authored = search_authored_prs(args.since, args.until, args.org)
-    reviewed = search_reviewed_prs(args.since, args.until, args.org)
+    try:
+        authored = search_authored_prs(args.since, args.until, args.org)
+        reviewed = search_reviewed_prs(args.since, args.until, args.org)
+    except GhError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # Deduplicate: remove from reviewed any PRs also in authored
     authored_urls = {pr.get("url") for pr in authored}

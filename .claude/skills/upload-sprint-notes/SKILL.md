@@ -10,16 +10,16 @@ Upload a finalized `draft.md` to Google Docs with company styles applied. The us
 ## Prerequisites
 
 - `work/sprint-notes/{sprint}/draft.md` must exist
-- The `md-to-gdoc.js` script must be available (path configured in `work/sprint-notes/config.yaml` under `google_drive.md_to_gdoc_script`)
+- The `md-to-gdoc.js` script must be available (path configured in `config/shared.yaml` under `google_drive.md_to_gdoc_script`)
 
 ## Process
 
 ### Step 1: Read configuration
 
-Read `work/sprint-notes/config.yaml` and extract:
+Read config files and extract:
 
-- `google_drive.md_to_gdoc_script` -- path to the upload script
-- `google_drive.sprint_notes_folder` -- target Google Drive folder URL
+- `google_drive.md_to_gdoc_script` from `config/shared.yaml` -- path to the upload script
+- `google_drive.upload_folder` from `config/sprint-notes.yaml` -- target Google Drive folder URL
 
 ### Step 2: Determine document title
 

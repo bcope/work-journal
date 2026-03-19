@@ -1,0 +1,5 @@
+# Configuration for project status updates.
+# Per-project settings go in config/project-configs/<project>.yaml.
+
+calendar:
+  credentials_dir: "${GDOCS_MCP_DIR}"

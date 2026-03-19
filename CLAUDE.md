@@ -34,22 +34,26 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 
 - `src/work_journal/` — Python package (collection, queries, parsing)
 - `src/work_journal/paths.py` — Centralized path constants (repo root, config path, work dirs)
-- `src/work_journal/config.py` — Shared config loading with env var resolution
+- `src/work_journal/config.py` — Config loading with env var resolution (per-process loaders)
 - `src/work_journal/scaffold.py` — Config-driven directory scaffolding
+- `config/` — Configuration files (shared settings, per-process configs, project configs)
+- `config/shared.yaml` — Shared settings (project name mappings, Google Drive script path)
+- `config/sprint-notes.yaml` — Sprint notes collection config (JQL queries, output paths)
+- `config/standup.yaml` — Standup notes config (JQL queries)
+- `config/project-status.yaml` — Project status config (calendar, Google Drive)
+- `config/project-configs/` — Per-project config files (e.g., `ggdisburse.yaml`)
+- `templates/` — Scaffold templates for creating work directories
 - `src/work_journal/collect.py` — Main orchestrator: reads config, resolves sprint dates via Jira API, runs all collection steps
 - `src/work_journal/jira/` — Jira API queries and CSV parsing
 - `src/work_journal/github/` — GitHub PR queries
 - `src/work_journal/git/` — Local git log queries
-- `src/work_journal/calendar/` — Google Calendar event queries
+- `src/work_journal/gcalendar/` — Google Calendar event queries
 - `src/work_journal/claude_code/` — Claude Code activity collection
 - `src/work_journal/collect_project_status.py` — Project status data collection (GitHub, Jira, Calendar)
 - `tests/` — Test suite
 - `work/sprint-notes/` — Sprint note data and drafts. Each sprint is a subdirectory (e.g., `2026-02-A/`).
-- `work/sprint-notes/config.yaml` — Repo-level config (Jira settings, JQL templates, GitHub/git settings, project name mappings). JQL templates use `{account_id}`, `{start_date}`, `{end_date}`, `{sprint_id}` placeholders.
 - `work/sprint-notes/{sprint}/sprint.yaml` — Sprint-level config (just the `sprint_name` field)
 - `work/project-status/` — Project status update data and drafts
-- `work/project-status/config.yaml` — Repo-level config for project status updates
-- `work/project-status/project-configs/` — Per-project config files (e.g., `ggdisburse.yaml`)
 - `work/progress-briefs/` — Quarterly progress brief artifacts (forms, Jira exports, authored docs, drafts)
 - `work/okrs/` — OKR tracking
 - `docs/` — Plans and design documents
@@ -68,7 +72,7 @@ These map Jira project keys to readable names used in sprint notes:
 - GGDM = "GGDisburse Migration"
 - UPKEEP = "Upkeep"
 
-The canonical source for this mapping is `work/sprint-notes/config.yaml` under `project_names`.
+The canonical source for this mapping is `config/shared.yaml` under `project_names`.
 
 ## Sprint notes workflow
 
@@ -83,7 +87,7 @@ Steps 3 and 4 are optional but significantly improve draft quality. Step 4 saves
 
 ## Project status updates workflow
 
-1. Create project config: `cp work/project-status/project-configs/example.yaml work/project-status/project-configs/{project}.yaml`
+1. Create project config: `cp config/project-configs/example.yaml config/project-configs/{project}.yaml`
 2. Edit the project config with repos, JQL queries, calendar settings
 3. Collect data: `uv run python3 src/work_journal/collect_project_status.py {project} --since YYYY-MM-DD`
 4. Draft via skill: `/project-status {project} --since YYYY-MM-DD --audience slt`
@@ -95,7 +99,7 @@ project's `default_days` setting. Calendar collection is skipped in this mode.
 
 ## Uploading to Google Docs
 
-The `md-to-gdoc.js` script converts markdown to styled Google Docs. The script path and target Drive folder are configured in `work/sprint-notes/config.yaml` under `google_drive` (resolved from env vars).
+The `md-to-gdoc.js` script converts markdown to styled Google Docs. The script path is configured in `config/shared.yaml` under `google_drive.md_to_gdoc_script`. The target Drive folder is configured per-process: in `config/sprint-notes.yaml` under `google_drive.upload_folder` for sprint notes, and in each project config file (e.g., `config/project-configs/ggdisburse.yaml`) under `google_drive.upload_folder` for project status updates.
 
 ```bash
 node $MD_TO_GDOC_SCRIPT upload <file.md> \

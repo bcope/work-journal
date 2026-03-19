@@ -1,0 +1,35 @@
+# Example project configuration for project status updates.
+# Copy this file and customize for your project:
+#   cp example.yaml my-project.yaml
+
+name: "Example Project"
+description: "Brief description of the project"
+
+github:
+  repos:
+    - your-org/repo-name
+  # For overview mode (no --since flag), query PRs from last N days
+  default_days: 30
+
+jira:
+  queries:
+    # "default" is used when no audience-specific query exists
+    default: "project = PROJ ORDER BY updated DESC"
+    # Audience-specific queries (optional)
+    slt: "project = PROJ AND type in (Epic, Story) ORDER BY priority DESC"
+    engineering: "project = PROJ ORDER BY updated DESC"
+
+calendar:
+  calendar_ids:
+    - primary
+  keywords:
+    - "project keyword"
+
+google_drive:
+  upload_folder: ""
+
+audience_modes:
+  slt:
+    tone: "executive summary — outcomes, risks, decisions needed"
+  engineering:
+    tone: "detailed — PRs, issue breakdowns, blockers, technical decisions"

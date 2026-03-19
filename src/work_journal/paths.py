@@ -23,11 +23,18 @@ REPO_ROOT = _find_repo_root()
 SRC_DIR = REPO_ROOT / "src" / "work_journal"
 WORK_DIR = REPO_ROOT / "work"
 SPRINT_NOTES_DIR = WORK_DIR / "sprint-notes"
-CONFIG_PATH = SPRINT_NOTES_DIR / "config.yaml"
 PROGRESS_BRIEFS_DIR = WORK_DIR / "progress-briefs"
 PROJECT_STATUS_DIR = WORK_DIR / "project-status"
-PROJECT_STATUS_CONFIG_PATH = PROJECT_STATUS_DIR / "config.yaml"
-PROJECT_CONFIGS_DIR = PROJECT_STATUS_DIR / "project-configs"
+STANDUP_DIR = WORK_DIR / "standup"
+
+# Config paths
+CONFIG_DIR = REPO_ROOT / "config"
+SHARED_CONFIG_PATH = CONFIG_DIR / "shared.yaml"
+SPRINT_NOTES_CONFIG_PATH = CONFIG_DIR / "sprint-notes.yaml"
+STANDUP_CONFIG_PATH = CONFIG_DIR / "standup.yaml"
+PROJECT_STATUS_CONFIG_PATH = CONFIG_DIR / "project-status.yaml"
+PROJECT_CONFIGS_DIR = CONFIG_DIR / "project-configs"
+TEMPLATES_DIR = REPO_ROOT / "templates"
 
 # Load .env from repo root — every entry point needs this
 load_dotenv(REPO_ROOT / ".env")

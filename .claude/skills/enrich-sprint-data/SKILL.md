@@ -38,7 +38,7 @@ Read these files from `work/sprint-notes/{sprint}/` to build a search context:
 
 3. **`github/prs.md`** -- Extract repo names and PR titles (additional search context). Optional.
 4. **`manual-notes.md`** -- Extract any names, topics, or links the user flagged. Optional.
-5. **`work/sprint-notes/config.yaml`** -- Read `project_names` for mapping keys to readable names, and `gmail.owner_email` for email search context.
+5. **`config/shared.yaml`** -- Read `project_names` for mapping keys to readable names. Use `OWNER_EMAIL` env var for email search context.
 
 Build a structured context with:
 

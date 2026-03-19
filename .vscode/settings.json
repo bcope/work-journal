@@ -45,7 +45,6 @@
         "debug.testOverrideProxyUrl": "",
         "debug.filterLogCategories": []
     },
-    "chat.useClaudeSkills": true,
     "github.copilot.chat.claudeCode.enabled": true,
 
     // Language Specific Settings
@@ -90,5 +89,6 @@
         "editor.tabSize": 2,
         "editor.insertSpaces": true,
         "editor.detectIndentation": false
-    }
+    },
+    "chat.useAgentSkills": true
 }

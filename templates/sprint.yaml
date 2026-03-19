@@ -1,0 +1,29 @@
+base_dir: work/sprint-notes
+naming: "{name}"
+subdirs:
+  - jira
+  - github
+  - git
+  - email
+  - calendar
+  - google-docs
+  - claude-code
+files:
+  sprint.yaml: |
+    # Sprint-level config. Only the sprint name is required.
+    sprint_name: "{sprint_name}"
+  manual-notes.md: |
+    # Manual Notes
+
+    Add notes here for context that isn't captured by automated data collection.
+    These will be read by the drafting skill and incorporated into sprint notes.
+
+    ## Slack highlights
+
+    ## Email highlights
+
+    ## Meetings / discussions
+
+    ## Other
+required_vars:
+  - sprint_name

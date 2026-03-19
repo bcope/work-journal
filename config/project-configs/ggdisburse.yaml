@@ -1,0 +1,32 @@
+name: "GGDisburse Migration"
+description: "Migration from legacy disbursement system to GGDisburse"
+
+github:
+  repos:
+    - globalgiving/ggdisburse-resources
+    - globalgiving/disburse-backend
+    - globalgiving/disburse-frontend
+  default_days: 30
+
+jira:
+  queries:
+    default: "project = GGDM ORDER BY updated DESC"
+    slt: "project = GGDM AND type in (Epic, Story) ORDER BY priority DESC"
+    engineering: "project = GGDM ORDER BY updated DESC"
+
+calendar:
+  calendar_ids:
+    - primary
+  keywords:
+    - "GGDisburse"
+    - "disbursement"
+    - "GGDM"
+
+google_drive:
+  upload_folder: ""
+
+audience_modes:
+  slt:
+    tone: "executive summary — outcomes, risks, decisions needed"
+  engineering:
+    tone: "detailed — PRs, issue breakdowns, blockers, technical decisions"

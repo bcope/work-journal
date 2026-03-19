@@ -17,7 +17,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-from work_journal.config import load_config, load_sprint_config
+from work_journal.config import load_sprint_config, load_sprint_notes_config
+from work_journal.git.query_git_log import find_git_repos, get_commits
+from work_journal.git.query_git_log import format_markdown as format_git_markdown
+from work_journal.github.query_github_prs import (
+    GhError,
+    search_authored_prs,
+    search_reviewed_prs,
+)
+from work_journal.github.query_github_prs import (
+    _format_markdown as format_pr_markdown,
+)
+from work_journal.jira.query_issues import search_issues
+from work_journal.jira.query_sprint_info import _make_session, find_sprint_by_name
 from work_journal.paths import REPO_ROOT, SPRINT_NOTES_DIR, SRC_DIR
 
 
@@ -43,23 +55,21 @@ def run_helper(script: str, args: list[str], output_path: Path | None = None) ->
     return result.stdout
 
 
-def resolve_sprint(config: dict, sprint_config: dict) -> dict:
+def resolve_sprint(sprint_config: dict) -> dict:
     """Resolve sprint name to full sprint metadata via Jira API."""
-    board_id = str(sprint_config.get("board_id", config["jira"]["board_id"]))
+    board_id = int(sprint_config.get("board_id", os.environ["JIRA_BOARD_ID"]))
     sprint_name = sprint_config["sprint_name"]
 
-    output = run_helper(
-        "jira/query_sprint_info.py",
-        ["--board-id", board_id, "--sprint-name", sprint_name, "--pretty"],
-    )
-    if not output:
+    session = _make_session()
+    result = find_sprint_by_name(session, board_id, sprint_name)
+    if result is None:
         print(
             f"Error: Could not find sprint '{sprint_name}' on board {board_id}.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    return json.loads(output)
+    return result
 
 
 def extract_dates(sprint_info: dict) -> tuple[str, str]:
@@ -87,9 +97,8 @@ def collect_jira_sprint_info(sprint_dir: Path, sprint_info: dict) -> None:
     print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
 
 
-def collect_jira_issues(sprint_dir: Path, config: dict, variables: dict) -> None:
+def collect_jira_issues(sprint_dir: Path, queries: dict, variables: dict) -> None:
     """Run all configured Jira JQL queries."""
-    queries = config["jira"].get("queries", {})
     for name, query_config in queries.items():
         raw_jql = query_config["jql"]
         if raw_jql == "TODO":
@@ -100,53 +109,78 @@ def collect_jira_issues(sprint_dir: Path, config: dict, variables: dict) -> None
         output_path = sprint_dir / output_file
 
         print(f"  Jira query '{name}': {jql}")
-        output = run_helper(
-            "jira/query_issues.py",
-            [jql, "--pretty"],
-            output_path=output_path,
-        )
-        if output:
-            try:
-                count = len(json.loads(output))
-                print(f"  Wrote {output_path.relative_to(REPO_ROOT)} ({count} issues)")
-            except json.JSONDecodeError:
-                print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
+        try:
+            issues = search_issues(jql)
+        except Exception as e:
+            print(f"  Warning: Jira query '{name}' failed: {e}", file=sys.stderr)
+            continue
+
+        if issues:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w") as f:
+                json.dump(issues, f, indent=2)
+                f.write("\n")
+            print(f"  Wrote {output_path.relative_to(REPO_ROOT)} ({len(issues)} issues)")
 
 
 def collect_github_prs(sprint_dir: Path, config: dict, start_date: str, end_date: str) -> None:
     """Collect GitHub PR data."""
     gh_config = config.get("github", {})
-    org = gh_config.get("org", os.environ.get("GITHUB_ORG", ""))
+    org = os.environ.get("GITHUB_ORG", "")
     output_file = gh_config.get("output", "github/prs.md")
     output_format = gh_config.get("format", "markdown")
     output_path = sprint_dir / output_file
 
     print(f"  GitHub PRs: org={org}, {start_date} to {end_date}")
-    run_helper(
-        "github/query_github_prs.py",
-        ["--since", start_date, "--until", end_date, "--org", org, "--format", output_format],
-        output_path=output_path,
-    )
-    if output_path.exists():
-        print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
+    try:
+        authored = search_authored_prs(start_date, end_date, org)
+        reviewed = search_reviewed_prs(start_date, end_date, org)
+    except GhError as e:
+        print(f"  Warning: GitHub PR query failed: {e}", file=sys.stderr)
+        return
+
+    # Deduplicate: remove from reviewed any PRs also in authored
+    authored_urls = {pr.get("url") for pr in authored}
+    reviewed = [pr for pr in reviewed if pr.get("url") not in authored_urls]
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_format == "markdown":
+        content = format_pr_markdown(authored, reviewed)
+    else:
+        indent = 2
+        result = {"authored": authored, "reviewed": reviewed}
+        content = json.dumps(result, indent=indent) + "\n"
+    with open(output_path, "w") as f:
+        f.write(content)
+    print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
 
 
 def collect_git_commits(sprint_dir: Path, config: dict, start_date: str, end_date: str) -> None:
     """Collect local git commit data."""
     git_config = config.get("git", {})
-    repos_dir = os.path.expanduser(git_config.get("repos_dir", "~/git"))
-    author = git_config.get("author", os.environ.get("GIT_AUTHOR", ""))
+    repos_dir = os.path.expanduser(os.environ.get("GIT_REPOS_DIR", "~/git"))
+    author = os.environ.get("GIT_AUTHOR", "")
     output_file = git_config.get("output", "git/commit-log.md")
     output_path = sprint_dir / output_file
 
     print(f"  Git commits: repos_dir={repos_dir}, author={author}")
-    run_helper(
-        "git/query_git_log.py",
-        ["--since", start_date, "--until", end_date, "--repos-dir", repos_dir, "--author", author],
-        output_path=output_path,
-    )
-    if output_path.exists():
-        print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
+    if not os.path.isdir(repos_dir):
+        print(f"  Warning: {repos_dir} is not a directory, skipping.", file=sys.stderr)
+        return
+
+    repos = find_git_repos(repos_dir)
+    results: dict[str, list[str]] = {}
+    for repo_path in repos:
+        repo_name = os.path.basename(repo_path)
+        commits = get_commits(repo_path, author, start_date, end_date)
+        if commits:
+            results[repo_name] = commits
+
+    content = format_git_markdown(results, start_date, end_date, author)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write(content)
+    print(f"  Wrote {output_path.relative_to(REPO_ROOT)}")
 
 
 def collect_claude_code_activity(
@@ -155,20 +189,13 @@ def collect_claude_code_activity(
     """Collect Claude Code session activity data."""
     cc_config = config.get("claude_code", {})
     history_path = os.path.expanduser(
-        cc_config.get(
-            "history_path", os.environ.get("CLAUDE_HISTORY_PATH", "~/.claude/history.jsonl")
-        )
+        os.environ.get("CLAUDE_HISTORY_PATH", "~/.claude/history.jsonl")
     )
     stats_cache_path = os.path.expanduser(
-        cc_config.get(
-            "stats_cache_path",
-            os.environ.get("CLAUDE_STATS_CACHE_PATH", "~/.claude/stats-cache.json"),
-        )
+        os.environ.get("CLAUDE_STATS_CACHE_PATH", "~/.claude/stats-cache.json")
     )
-    projects_path = os.path.expanduser(
-        cc_config.get("projects_path", os.environ.get("CLAUDE_PROJECTS_PATH", "~/.claude/projects"))
-    )
-    work_dirs = [os.path.expanduser(d) for d in cc_config.get("work_dirs", ["~/git"])]
+    projects_path = os.path.expanduser(os.environ.get("CLAUDE_PROJECTS_PATH", "~/.claude/projects"))
+    work_dirs = [os.path.expanduser(os.environ.get("CLAUDE_WORK_DIRS", "~/git"))]
     output_file = cc_config.get("output", "claude-code/sessions.md")
     docs_output_file = cc_config.get("documents_output", "claude-code/documents.md")
     output_path = sprint_dir / output_file
@@ -234,7 +261,7 @@ def main():
 
     args = parser.parse_args()
 
-    config = load_config()
+    config = load_sprint_notes_config()
     sprint_dir = ensure_sprint_dir(args.sprint)
 
     # Check for sprint.yaml
@@ -252,7 +279,7 @@ def main():
 
     # Resolve sprint to get dates and ID
     print(f"Resolving sprint: {sprint_config['sprint_name']}")
-    sprint_info = resolve_sprint(config, sprint_config)
+    sprint_info = resolve_sprint(sprint_config)
     start_date, end_date = extract_dates(sprint_info)
     sprint_id = sprint_info["id"]
     print(f"  Sprint ID: {sprint_id}")
@@ -261,7 +288,7 @@ def main():
 
     # Build template variables for JQL
     variables = {
-        "account_id": config["jira"]["account_id"],
+        "account_id": os.environ["JIRA_ACCOUNT_ID"],
         "start_date": start_date,
         "end_date": end_date,
         "sprint_id": str(sprint_id),
@@ -278,11 +305,12 @@ def main():
             jql = template_jql(raw_jql, variables)
             print(f"  Jira '{name}': {jql} -> {qc['output']}")
         gh = config.get("github", {})
-        print(f"  GitHub PRs: org={gh.get('org')} -> {gh.get('output')}")
+        print(f"  GitHub PRs: org={os.environ.get('GITHUB_ORG')} -> {gh.get('output')}")
         git_cfg = config.get("git", {})
-        print(f"  Git commits: repos_dir={git_cfg.get('repos_dir')} -> {git_cfg.get('output')}")
+        repos_dir = os.environ.get("GIT_REPOS_DIR")
+        print(f"  Git commits: repos_dir={repos_dir} -> {git_cfg.get('output')}")
         cc_cfg = config.get("claude_code", {})
-        cc_work = cc_cfg.get("work_dirs", ["~/git"])
+        cc_work = os.environ.get("CLAUDE_WORK_DIRS", "~/git")
         cc_out = cc_cfg.get("output", "claude-code/sessions.md")
         print(f"  Claude Code activity: work_dirs={cc_work} -> {cc_out}")
         return
@@ -293,7 +321,7 @@ def main():
     print()
 
     print("Collecting Jira issues...")
-    collect_jira_issues(sprint_dir, config, variables)
+    collect_jira_issues(sprint_dir, config["jira"].get("queries", {}), variables)
     print()
 
     print("Collecting GitHub PRs...")

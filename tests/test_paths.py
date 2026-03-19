@@ -17,11 +17,31 @@ def test_src_dir_exists():
     assert SRC_DIR.name == "work_journal"
 
 
-def test_config_path_exists():
-    from work_journal.paths import CONFIG_PATH
+def test_config_dir_exists():
+    from work_journal.paths import CONFIG_DIR
 
-    assert CONFIG_PATH.exists()
-    assert CONFIG_PATH.name == "config.yaml"
+    assert CONFIG_DIR.exists()
+    assert CONFIG_DIR.name == "config"
+
+
+def test_shared_config_path_exists():
+    from work_journal.paths import SHARED_CONFIG_PATH
+
+    assert SHARED_CONFIG_PATH.exists()
+    assert SHARED_CONFIG_PATH.name == "shared.yaml"
+
+
+def test_templates_dir_exists():
+    from work_journal.paths import TEMPLATES_DIR
+
+    assert TEMPLATES_DIR.exists()
+    assert TEMPLATES_DIR.name == "templates"
+
+
+def test_project_configs_dir_exists():
+    from work_journal.paths import PROJECT_CONFIGS_DIR
+
+    assert PROJECT_CONFIGS_DIR.exists()
 
 
 def test_sprint_notes_dir():
