@@ -9,7 +9,7 @@ description: Generate a project status update from collected GitHub, Jira, and C
 
 Use this skill when the user asks to generate a project status update. The
 user will specify a project name that corresponds to a config file in
-`work/project-status/project-configs/` in the work-journal repo.
+`config/project-configs/` in the work-journal repo.
 
 ## Arguments
 

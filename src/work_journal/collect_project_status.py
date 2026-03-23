@@ -1,7 +1,7 @@
 """Collect project status data from GitHub, Jira, and Google Calendar.
 
 Reads config/project-status.yaml for repo defaults and
-work/project-status/project-configs/<project>.yaml for per-project settings.
+config/project-configs/<project>.yaml for per-project settings.
 Writes output to work/project-status/<project>/<date>[-n]/.
 
 Usage:
