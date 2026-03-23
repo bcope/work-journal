@@ -23,17 +23,24 @@ GitHub data, git commits, Claude Code sessions, manual notes, and enrichment out
 Read the following files from `work/sprint-notes/{sprint}/`:
 
 1. **`jira/sprint-info.json`** -- Sprint metadata (name, start date, end date).
-2. **Jira issue files** -- categorized by how work entered the sprint:
+2. **`jira/prior-sprint-info.json`** -- Prior sprint metadata (name, dates, completeDate). Used to identify the between-sprints gap period. Optional.
+3. **Jira issue files** -- categorized by how work entered the sprint:
    - `jira/sprint-planned-completed.json` -- Issues in the sprint at start, completed. Delivered commitments.
    - `jira/sprint-planned-incomplete.json` -- Issues in the sprint at start, not completed. Look for why (blocked? descoped? carried over?).
    - `jira/sprint-added-completed.json` -- Issues added after sprint start, completed. Shows responsiveness.
    - `jira/sprint-added-incomplete.json` -- Issues added after sprint start, not completed.
+   - `jira/between-sprints-completed.json` -- Issues resolved between the previous sprint close and this sprint's start. Work that happened in the gap.
    - `jira/non-sprint-completed.json` -- Work completed in the date range but never in this sprint. Operational/ad-hoc work.
    - `jira/non-sprint-incomplete.json` -- Work touched in the date range but never in the sprint, still open.
    - `jira/non-sprint-non-assigned-with-worklog.json` -- Issues not assigned to user but with worklogs by user.
-3. **`github/prs.md`** -- GitHub PR activity (authored and reviewed). Optional.
-4. **`git/commit-log.md`** -- Local git commits. Optional.
-5. **`claude-code/sessions.md`** -- Claude Code session activity during the sprint, broken down by project. Shows which repos were worked on, session counts, tool usage, and files created/modified. Useful for understanding effort distribution and identifying work not captured in Jira. Optional.
+4. **Sprint-period activity files:**
+   - `github/prs.md` -- GitHub PR activity (authored and reviewed). Optional.
+   - `git/commit-log.md` -- Local git commits. Optional.
+   - `claude-code/sessions.md` -- Claude Code session activity. Optional.
+5. **Between-sprints activity files** (gap between prior sprint close and this sprint start):
+   - `github/between-sprints-prs.md` -- PRs merged in the gap. Optional.
+   - `git/between-sprints-commit-log.md` -- Commits in the gap. Optional.
+   - `claude-code/between-sprints-sessions.md` -- Claude Code sessions in the gap. Optional.
 6. **`manual-notes.md`** -- User-curated notes (Slack links, email summaries, meeting notes). Optional.
 
 If a file is missing, note it and continue with available data.
@@ -63,6 +70,7 @@ If enrichment files don't exist, proceed with available data. The draft will hav
 
 #### Understand the sprint narrative
 
+- **Between-sprints work** (between-sprints-completed + between-sprints PRs/commits/Claude Code): What happened in the gap between the prior sprint close and this sprint start? This work would otherwise be invisible. Treat it as its own section in the draft, similar to non-sprint work.
 - **Planned work** (planned-completed + planned-incomplete): What was committed to? What was delivered vs. carried over?
 - **Added work** (added-completed + added-incomplete): What emerged after sprint start? Who requested it and why?
 - **Non-sprint work** (non-sprint-completed + non-sprint-incomplete + non-sprint-worklog): What happened outside the formal sprint? These often contain hidden accomplishments.
@@ -146,6 +154,8 @@ work/sprint-notes/
   {sprint}/
     jira/
       sprint-info.json                          # Sprint metadata (dates, ID)
+      prior-sprint-info.json                    # Prior sprint metadata (for gap period)
+      between-sprints-completed.json            # Work done in gap between sprints
       sprint-planned-completed.json             # Planned work, completed
       sprint-planned-incomplete.json            # Planned work, not completed
       sprint-added-completed.json               # Added mid-sprint, completed
@@ -156,10 +166,13 @@ work/sprint-notes/
       issue-details.md                          # Jira enrichment (from /enrich-sprint-data)
     github/
       prs.md                                    # GitHub PR activity
+      between-sprints-prs.md                    # PRs merged in the gap between sprints
     git/
       commit-log.md                             # Local git commits
+      between-sprints-commit-log.md             # Commits in the gap between sprints
     claude-code/
       sessions.md                               # Claude Code session activity
+      between-sprints-sessions.md               # Claude Code in the gap between sprints
     email/
       highlights.md                             # Gmail enrichment (from /enrich-sprint-data)
     calendar/

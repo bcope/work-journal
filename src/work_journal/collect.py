@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import requests
+
 from work_journal.config import load_sprint_config, load_sprint_notes_config
 from work_journal.git.query_git_log import find_git_repos, get_commits
 from work_journal.git.query_git_log import format_markdown as format_git_markdown
@@ -29,7 +31,11 @@ from work_journal.github.query_github_prs import (
     _format_markdown as format_pr_markdown,
 )
 from work_journal.jira.query_issues import search_issues
-from work_journal.jira.query_sprint_info import _make_session, find_sprint_by_name
+from work_journal.jira.query_sprint_info import (
+    _make_session,
+    find_previous_sprint,
+    find_sprint_by_name,
+)
 from work_journal.paths import REPO_ROOT, SPRINT_NOTES_DIR, SRC_DIR
 
 
@@ -55,8 +61,11 @@ def run_helper(script: str, args: list[str], output_path: Path | None = None) ->
     return result.stdout
 
 
-def resolve_sprint(sprint_config: dict) -> dict:
-    """Resolve sprint name to full sprint metadata via Jira API."""
+def resolve_sprint(sprint_config: dict) -> tuple[dict, requests.Session, int]:
+    """Resolve sprint name to full sprint metadata via Jira API.
+
+    Returns (sprint_info, session, board_id) so callers can reuse the session.
+    """
     board_id = int(sprint_config.get("board_id", os.environ["JIRA_BOARD_ID"]))
     sprint_name = sprint_config["sprint_name"]
 
@@ -69,7 +78,7 @@ def resolve_sprint(sprint_config: dict) -> dict:
         )
         sys.exit(1)
 
-    return result
+    return result, session, board_id
 
 
 def extract_dates(sprint_info: dict) -> tuple[str, str]:
@@ -279,11 +288,25 @@ def main():
 
     # Resolve sprint to get dates and ID
     print(f"Resolving sprint: {sprint_config['sprint_name']}")
-    sprint_info = resolve_sprint(sprint_config)
+    sprint_info, session, board_id = resolve_sprint(sprint_config)
     start_date, end_date = extract_dates(sprint_info)
     sprint_id = sprint_info["id"]
     print(f"  Sprint ID: {sprint_id}")
     print(f"  Dates: {start_date} to {end_date}")
+
+    # Find previous sprint to capture between-sprints work
+    prior_sprint = find_previous_sprint(session, board_id, sprint_info)
+    prior_sprint_end: str | None = None
+    if prior_sprint:
+        # completeDate is the actual close time; fall back to endDate
+        raw = prior_sprint.get("completeDate") or prior_sprint.get("endDate", "")
+        prior_sprint_end = raw[:10] if raw else None
+        if prior_sprint_end:
+            print(f"  Prior sprint: {prior_sprint.get('name', '?')} (ended {prior_sprint_end})")
+        else:
+            print("  Prior sprint found but has no end date, skipping between-sprints collection")
+    else:
+        print("  No prior sprint found, skipping between-sprints collection")
     print()
 
     # Build template variables for JQL
@@ -292,11 +315,16 @@ def main():
         "start_date": start_date,
         "end_date": end_date,
         "sprint_id": str(sprint_id),
+        "prior_sprint_end": prior_sprint_end or start_date,
     }
+
+    has_gap = prior_sprint_end is not None and prior_sprint_end < start_date
 
     if args.dry_run:
         print("Dry run — would collect:")
         print("  Sprint info -> jira/sprint-info.json")
+        if has_gap:
+            print("  Prior sprint info -> jira/prior-sprint-info.json")
         for name, qc in config["jira"].get("queries", {}).items():
             raw_jql = qc["jql"]
             if raw_jql == "TODO":
@@ -313,11 +341,23 @@ def main():
         cc_work = os.environ.get("CLAUDE_WORK_DIRS", "~/git")
         cc_out = cc_cfg.get("output", "claude-code/sessions.md")
         print(f"  Claude Code activity: work_dirs={cc_work} -> {cc_out}")
+        if has_gap:
+            print(f"  Between-sprints ({prior_sprint_end} to {start_date}):")
+            print("    GitHub PRs -> github/between-sprints-prs.md")
+            print("    Git commits -> git/between-sprints-commit-log.md")
+            print("    Claude Code -> claude-code/between-sprints-sessions.md")
         return
 
     # Collect everything
     print("Collecting sprint info...")
     collect_jira_sprint_info(sprint_dir, sprint_info)
+    if prior_sprint and has_gap:
+        prior_path = sprint_dir / "jira" / "prior-sprint-info.json"
+        prior_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(prior_path, "w") as f:
+            json.dump(prior_sprint, f, indent=2)
+            f.write("\n")
+        print(f"  Wrote {prior_path.relative_to(REPO_ROOT)}")
     print()
 
     print("Collecting Jira issues...")
@@ -335,6 +375,42 @@ def main():
     print("Collecting Claude Code activity...")
     collect_claude_code_activity(sprint_dir, config, start_date, end_date)
     print()
+
+    # Between-sprints collection (prior sprint end → current sprint start)
+    if has_gap:
+        assert prior_sprint_end is not None
+        print(f"Collecting between-sprints data ({prior_sprint_end} to {start_date})...")
+
+        print("  GitHub PRs (between sprints)...")
+        collect_github_prs(
+            sprint_dir,
+            {"github": {**config.get("github", {}), "output": "github/between-sprints-prs.md"}},
+            prior_sprint_end,
+            start_date,
+        )
+
+        print("  Git commits (between sprints)...")
+        collect_git_commits(
+            sprint_dir,
+            {"git": {**config.get("git", {}), "output": "git/between-sprints-commit-log.md"}},
+            prior_sprint_end,
+            start_date,
+        )
+
+        print("  Claude Code activity (between sprints)...")
+        collect_claude_code_activity(
+            sprint_dir,
+            {
+                "claude_code": {
+                    **config.get("claude_code", {}),
+                    "output": "claude-code/between-sprints-sessions.md",
+                    "documents_output": "claude-code/between-sprints-documents.md",
+                }
+            },
+            prior_sprint_end,
+            start_date,
+        )
+        print()
 
     print("Done. Next steps:")
     print(f"  1. Edit work/sprint-notes/{args.sprint}/manual-notes.md with additional context")

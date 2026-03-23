@@ -24,6 +24,11 @@ jira:
       jql: "assignee = {account_id} AND sprint = {sprint_id} AND statusCategory != Done AND labels in (added_to_sprint-current, added_to_sprint-id-{sprint_id})"
       output: "jira/sprint-added-incomplete.json"
 
+    between_sprints_completed:
+      description: "Issues resolved between previous sprint close and current sprint start"
+      jql: 'assignee = {account_id} AND statusCategory = Done AND resolved >= "{prior_sprint_end}" AND resolved < "{start_date}"'
+      output: "jira/between-sprints-completed.json"
+
     non_sprint_completed:
       description: "Issues assigned to user, completed in the date range, never in this sprint"
       jql: "assignee = {account_id} AND sprint != {sprint_id} AND statusCategory = Done AND resolved >= {start_date} AND resolved <= {end_date}"

@@ -76,6 +76,31 @@ def get_sprint(session: requests.Session, sprint_id: int) -> dict:
     return resp.json()
 
 
+def find_previous_sprint(
+    session: requests.Session, board_id: int, current_sprint: dict
+) -> dict | None:
+    """Find the most recent closed sprint that ended before the current one started.
+
+    Returns None if no prior sprint is found.
+    """
+    current_start = current_sprint.get("startDate", "")
+    if not current_start:
+        return None
+
+    closed = list_sprints(session, board_id, state="closed")
+    # Sort by endDate descending so the most recent is first
+    closed.sort(key=lambda s: s.get("endDate", ""), reverse=True)
+
+    for sprint in closed:
+        if sprint.get("id") == current_sprint.get("id"):
+            continue
+        end = sprint.get("endDate", "")
+        if end and end < current_start:
+            return sprint
+
+    return None
+
+
 def find_sprint_by_name(session: requests.Session, board_id: int, name: str) -> dict | None:
     """Search all sprints on a board for one matching the given name.
 
