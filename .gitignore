@@ -42,3 +42,11 @@ work/progress-briefs/*/jira-issues/
 
 # One-off data files
 events-mentioning-ai.json
+
+# TEMP - DON'T COMMIT THIS
+work/**/**.gitkeep
+work/**/**.json
+work/**/**.md
+work/**/**.pdf
+work/**/**.yaml
+docs/plans/*.md
