@@ -8,4 +8,4 @@ queries:
   blocked:
     jql: "assignee = {account_id} and filter = 15541 and sprint = {sprint_id} and statusCategory != done"
   injected:
-    jql: "assignee = {account_id} and labels = added_to_sprint-id-{sprint_id} and (labels = added_to_sprint-date-{yesterday} or labels = added_to_sprint-date-{today})"
+    jql: "assignee = {account_id} and labels = added_to_sprint-id-{sprint_id} and {injected_date_filter}"

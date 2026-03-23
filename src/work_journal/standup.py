@@ -57,34 +57,61 @@ def template_jql(jql_template: str, variables: dict) -> str:
     return result
 
 
-def query_jira(jql: str) -> list[dict]:
+def build_date_label_filter(prefix: str, start: date, end: date) -> str:
+    """Build a JQL OR clause matching date-stamped labels for each day in [start, end].
+
+    Example: build_date_label_filter("added_to_sprint-date-", fri, mon)
+    returns: (labels = "added_to_sprint-date-2026-03-20" or ...)
+    """
+    clauses = []
+    current = start
+    while current <= end:
+        clauses.append(f'labels = "{prefix}{current.isoformat()}"')
+        current += timedelta(days=1)
+    return "(" + " or ".join(clauses) + ")"
+
+
+def _warn(warnings: list[str], msg: str) -> None:
+    """Append a warning and print it to stderr."""
+    warnings.append(msg)
+    print(f"Warning: {msg}", file=sys.stderr)
+
+
+def query_jira(jql: str, warnings: list[str], label: str = "Jira query") -> list[dict]:
     """Run a Jira query, return parsed issues."""
     try:
         return search_issues(jql)
-    except Exception:
+    except Exception as e:
+        _warn(warnings, f"{label} failed: {e}")
         return []
 
 
-def query_git_log(since: str, until: str) -> str:
+def query_git_log(since: str, until: str, warnings: list[str]) -> str:
     """Query local git commits via direct import."""
     repos_dir = os.path.expanduser(os.environ.get("GIT_REPOS_DIR", "~/git"))
     author = os.environ.get("GIT_AUTHOR", "")
 
     if not os.path.isdir(repos_dir):
+        _warn(warnings, f"Git repos directory not found: {repos_dir}")
         return ""
 
-    repos = find_git_repos(repos_dir)
-    results: dict[str, list[str]] = {}
-    for repo_path in repos:
-        repo_name = os.path.basename(repo_path)
-        commits = get_commits(repo_path, author, since, until)
-        if commits:
-            results[repo_name] = commits
+    try:
+        repos = find_git_repos(repos_dir)
+        results: dict[str, list[str]] = {}
+        for repo_path in repos:
+            name = os.path.basename(repo_path)
+            commits = get_commits(repo_path, author, since, until)
+            if commits:
+                results[name] = commits
+        return format_git_markdown(results, since, until, author)
+    except Exception as e:
+        _warn(warnings, f"Git log collection failed: {e}")
+        return ""
 
-    return format_git_markdown(results, since, until, author)
 
-
-def collect_claude_activity(config: dict, yesterday: date, today: date) -> dict | None:
+def collect_claude_activity(
+    config: dict, yesterday: date, today: date, warnings: list[str]
+) -> dict | None:
     """Collect Claude Code activity for yesterday's sessions.
 
     Returns per-repo metrics and aggregate totals, or None if no sessions found.
@@ -100,50 +127,54 @@ def collect_claude_activity(config: dict, yesterday: date, today: date) -> dict 
     if not sessions:
         return None
 
-    # Per-repo aggregation
-    repos: dict[str, dict] = {}
-    total_thinking_ms = 0
-    total_turns = 0
-    total_user_messages = 0
+    try:
+        # Per-repo aggregation
+        repos: dict[str, dict] = {}
+        total_thinking_ms = 0
+        total_turns = 0
+        total_user_messages = 0
 
-    for session_id, entry in sessions.items():
-        project_path = entry["project"]
-        name = repo_name(project_path)
-        metrics = analyze_conversation(DEFAULT_PROJECTS_PATH, project_path, session_id)
+        for session_id, entry in sessions.items():
+            project_path = entry["project"]
+            name = repo_name(project_path)
+            metrics = analyze_conversation(DEFAULT_PROJECTS_PATH, project_path, session_id)
 
-        if name not in repos:
-            repos[name] = {
-                "session_count": 0,
-                "thinking_time_ms": 0,
-                "user_messages": 0,
-            }
+            if name not in repos:
+                repos[name] = {
+                    "session_count": 0,
+                    "thinking_time_ms": 0,
+                    "user_messages": 0,
+                }
 
-        repos[name]["session_count"] += 1
-        repos[name]["thinking_time_ms"] += metrics["thinking_time_ms"]
-        repos[name]["user_messages"] += metrics["user_messages"]
+            repos[name]["session_count"] += 1
+            repos[name]["thinking_time_ms"] += metrics["thinking_time_ms"]
+            repos[name]["user_messages"] += metrics["user_messages"]
 
-        total_thinking_ms += metrics["thinking_time_ms"]
-        total_turns += metrics["turn_count"]
-        total_user_messages += metrics["user_messages"]
+            total_thinking_ms += metrics["thinking_time_ms"]
+            total_turns += metrics["turn_count"]
+            total_user_messages += metrics["user_messages"]
 
-    return {
-        "session_count": len(sessions),
-        "repos": repos,
-        "thinking_time_ms": total_thinking_ms,
-        "total_turns": total_turns,
-        "total_user_messages": total_user_messages,
-    }
+        return {
+            "session_count": len(sessions),
+            "repos": repos,
+            "thinking_time_ms": total_thinking_ms,
+            "total_turns": total_turns,
+            "total_user_messages": total_user_messages,
+        }
+    except Exception as e:
+        _warn(warnings, f"Claude Code activity collection failed: {e}")
+        return None
 
 
-def get_active_sprint_id() -> str:
+def get_active_sprint_id(warnings: list[str]) -> str:
     """Return the ID of the active sprint, or empty string if unavailable."""
     try:
         session = _make_session()
         sprints = list_sprints(session, DEFAULT_BOARD_ID, state="active")
         if sprints:
             return str(sprints[0]["id"])
-    except Exception:
-        pass
+    except Exception as e:
+        _warn(warnings, f"Active sprint lookup failed: {e}")
     return ""
 
 
@@ -153,25 +184,30 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
     org = os.environ.get("GITHUB_ORG", "")
     git_author = os.environ.get("GIT_AUTHOR", "")
     standup_queries = standup_config.get("queries", {})
+    warnings: list[str] = []
 
     yesterday_str = yesterday.isoformat()
     today_str = today.isoformat()
-    sprint_id = get_active_sprint_id()
+    sprint_id = get_active_sprint_id(warnings)
+
+    injected_date_filter = build_date_label_filter("added_to_sprint-date-", yesterday, today)
 
     variables = {
         "account_id": account_id,
         "yesterday": yesterday_str,
         "today": today_str,
         "sprint_id": sprint_id,
+        "injected_date_filter": injected_date_filter,
     }
 
-    data = {
+    data: dict = {
         "yesterday": yesterday_str,
         "today": today_str,
         "completed": {"jira": [], "prs": [], "commits": ""},
         "in_progress": {"jira": [], "prs": []},
         "blocked": {"jira": []},
         "injected": {"jira": []},
+        "warnings": warnings,
     }
 
     # --- Yesterday: completed Jira issues ---
@@ -181,13 +217,18 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
         ' AND updated < "{today}" AND statusCategory = Done',
     )
     completed_jql = template_jql(completed_jql_template, variables)
-    data["completed"]["jira"] = query_jira(completed_jql)
+    data["completed"]["jira"] = query_jira(completed_jql, warnings, "Completed yesterday (Jira)")
 
     # --- Yesterday: merged PRs ---
-    data["completed"]["prs"] = search_merged_prs(yesterday_str, today_str, org, author=git_author)
+    try:
+        data["completed"]["prs"] = search_merged_prs(
+            yesterday_str, today_str, org, author=git_author
+        )
+    except Exception as e:
+        _warn(warnings, f"Merged PRs query failed: {e}")
 
     # --- Yesterday: git commits ---
-    data["completed"]["commits"] = query_git_log(yesterday_str, today_str)
+    data["completed"]["commits"] = query_git_log(yesterday_str, today_str, warnings)
 
     # --- Today: in-progress Jira issues ---
     in_progress_jql_template = standup_queries.get("in_progress", {}).get(
@@ -195,26 +236,29 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
         'assignee = {account_id} AND status = "In Progress"',
     )
     in_progress_jql = template_jql(in_progress_jql_template, variables)
-    data["in_progress"]["jira"] = query_jira(in_progress_jql)
+    data["in_progress"]["jira"] = query_jira(in_progress_jql, warnings, "In-progress (Jira)")
 
     # --- Today: open PRs (updated in the last 7 days) ---
     open_since = (yesterday - timedelta(days=7)).isoformat()
-    data["in_progress"]["prs"] = search_open_prs(org, author=git_author, since=open_since)
+    try:
+        data["in_progress"]["prs"] = search_open_prs(org, author=git_author, since=open_since)
+    except Exception as e:
+        _warn(warnings, f"Open PRs query failed: {e}")
 
     # --- Blocked ---
     blocked_jql_template = standup_queries.get("blocked", {}).get("jql", "")
     if blocked_jql_template:
         blocked_jql = template_jql(blocked_jql_template, variables)
-        data["blocked"]["jira"] = query_jira(blocked_jql)
+        data["blocked"]["jira"] = query_jira(blocked_jql, warnings, "Blocked (Jira)")
 
     # --- Injected (added to sprint recently) ---
     injected_jql_template = standup_queries.get("injected", {}).get("jql", "")
     if injected_jql_template and sprint_id:
         injected_jql = template_jql(injected_jql_template, variables)
-        data["injected"]["jira"] = query_jira(injected_jql)
+        data["injected"]["jira"] = query_jira(injected_jql, warnings, "Injected (Jira)")
 
     # --- Claude Code activity ---
-    data["claude_code"] = collect_claude_activity(standup_config, yesterday, today)
+    data["claude_code"] = collect_claude_activity(standup_config, yesterday, today, warnings)
 
     return data
 
@@ -395,6 +439,15 @@ def format_markdown(data: dict, project_names: dict) -> str:
         lines.append("None")
         lines.append("")
 
+    # --- Data collection warnings ---
+    warnings = data.get("warnings", [])
+    if warnings:
+        lines.append("## Data collection warnings")
+        lines.append("")
+        for w in warnings:
+            lines.append(f"- {w}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -438,6 +491,9 @@ def main():
         output_path = output_path.with_suffix(".json")
     output_path.write_text(output + "\n")
     print(f"Saved to {output_path}", file=sys.stderr)
+
+    if data.get("warnings"):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

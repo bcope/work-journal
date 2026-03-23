@@ -37,4 +37,4 @@ PROJECT_CONFIGS_DIR = CONFIG_DIR / "project-configs"
 TEMPLATES_DIR = REPO_ROOT / "templates"
 
 # Load .env from repo root — every entry point needs this
-load_dotenv(REPO_ROOT / ".env")
+load_dotenv(REPO_ROOT / ".env", override=True)
