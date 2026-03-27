@@ -36,7 +36,7 @@ from work_journal.jira.query_sprint_info import (
     find_previous_sprint,
     find_sprint_by_name,
 )
-from work_journal.paths import REPO_ROOT, SPRINT_NOTES_DIR, SRC_DIR
+from work_journal.paths import INSIGHTS_CLEANED_DIR, REPO_ROOT, SPRINT_NOTES_DIR, SRC_DIR
 
 
 def run_helper(script: str, args: list[str], output_path: Path | None = None) -> str:
@@ -280,6 +280,20 @@ def main():
             f"Error: No sprint.yaml found in {sprint_dir.relative_to(REPO_ROOT)}.\n"
             f"Create one with at least:\n"
             f'  sprint_name: "your-sprint-name-here"',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Check for cleaned insights report
+    insights_path = INSIGHTS_CLEANED_DIR / f"{args.sprint}.md"
+    if not insights_path.exists():
+        print(
+            f"Error: No cleaned insights report found for {args.sprint}.\n"
+            f"  1. Run /insights for the sprint date range\n"
+            f"  2. Copy the HTML to work/shared/insights/raw/{args.sprint}.html\n"
+            f"  3. Run: uv run python3 src/work_journal/insights/cli.py {args.sprint}\n"
+            f"  4. Run: /clean-insights {args.sprint}\n"
+            f"Then re-run collect.py.",
             file=sys.stderr,
         )
         sys.exit(1)

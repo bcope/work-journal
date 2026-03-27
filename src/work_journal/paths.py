@@ -26,6 +26,11 @@ SPRINT_NOTES_DIR = WORK_DIR / "sprint-notes"
 PROGRESS_BRIEFS_DIR = WORK_DIR / "progress-briefs"
 PROJECT_STATUS_DIR = WORK_DIR / "project-status"
 STANDUP_DIR = WORK_DIR / "standup"
+SHARED_DIR = WORK_DIR / "shared"
+INSIGHTS_DIR = SHARED_DIR / "insights"
+INSIGHTS_RAW_DIR = INSIGHTS_DIR / "raw"
+INSIGHTS_PARSED_DIR = INSIGHTS_DIR / "parsed"
+INSIGHTS_CLEANED_DIR = INSIGHTS_DIR / "cleaned"
 
 # Config paths
 CONFIG_DIR = REPO_ROOT / "config"
