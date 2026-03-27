@@ -42,6 +42,10 @@ Read the following files from `work/sprint-notes/{sprint}/`:
    - `git/between-sprints-commit-log.md` -- Commits in the gap. Optional.
    - `claude-code/between-sprints-sessions.md` -- Claude Code sessions in the gap. Optional.
 6. **`manual-notes.md`** -- User-curated notes (Slack links, email summaries, meeting notes). Optional.
+7. **Claude Code insights** -- `work/shared/insights/cleaned/{sprint}.md`. Pre-cleaned
+   insights report covering work areas, accomplishments, friction points, and usage
+   notes. Use this to inform the Claude Code / developer productivity sections of the
+   sprint notes. This file is always present (collect.py gates on it).
 
 If a file is missing, note it and continue with available data.
 

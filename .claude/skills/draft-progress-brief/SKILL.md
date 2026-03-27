@@ -16,6 +16,11 @@ Use this skill when the user asks to draft a quarterly progress brief, performan
    - Parse Jira CSV exports in `work/progress-briefs/<YEAR>-<QUARTER>/jira-issues/` using `src/work_journal/jira/parse_jira_csv.py` or by reading the CSV directly. The CSV format is the most structured; the RSS XML is an alternative.
    - Read all documents in `work/progress-briefs/<YEAR>-<QUARTER>/docs/`. These are authored memos, sprint notes, and investigation notes that provide narrative context for the work.
    - Note: Some files may contain embedded base64 images making them very large. Use `cut -c1-2000` via Bash to truncate long lines when the Read tool fails due to file size.
+   - Read all cleaned insights reports in `work/shared/insights/cleaned/` whose
+     sprint IDs fall within the quarter (up to six files: three months, two sprints
+     each). These provide Claude Code usage patterns, productivity insights, and
+     friction trends across the quarter. Missing files are expected for sprints
+     before this feature was added -- note the gap and continue.
 3. **Synthesize the evidence** into answers for each form question:
    - Use bullet points for clarity (the forms request this).
    - Be honest and concise -- focus on impactful accomplishments, challenges, and learnings.
