@@ -12,3 +12,22 @@ project_names:
 
 google_drive:
   md_to_gdoc_script: "${MD_TO_GDOC_SCRIPT}"
+
+insights:
+  work_keywords:
+    - compliance
+    - disbursement
+    - "jira workflow"
+    - standup
+    - "sprint notes"
+    - redesignation
+    - netsuite
+    - "financial automation"
+    - "developer productivity"
+    - "repo maintenance"
+  personal_keywords:
+    - "company evaluation"
+    - "product category"
+    - "audience profile"
+    - "conversation strategy"
+    - "obsidian clip"
