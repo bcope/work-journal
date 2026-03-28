@@ -25,6 +25,9 @@ insights:
     - "financial automation"
     - "developer productivity"
     - "repo maintenance"
+    - "git operations"
+    - credential
+    - "env var"
   personal_keywords:
     - "company evaluation"
     - "product category"
