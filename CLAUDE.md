@@ -37,7 +37,7 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 - `src/work_journal/config.py` — Config loading with env var resolution (per-process loaders)
 - `src/work_journal/scaffold.py` — Config-driven directory scaffolding
 - `config/` — Configuration files (shared settings, per-process configs, project configs)
-- `config/shared.yaml` — Shared settings (project name mappings, Google Drive script path)
+- `config/shared.yaml` — Shared settings (project name mappings, Google Drive script path, insights keywords)
 - `config/sprint-notes.yaml` — Sprint notes collection config (JQL queries, output paths)
 - `config/standup.yaml` — Standup notes config (JQL queries)
 - `config/project-status.yaml` — Project status config (calendar, Google Drive)
@@ -49,10 +49,15 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 - `src/work_journal/git/` — Local git log queries
 - `src/work_journal/gcalendar/` — Google Calendar event queries
 - `src/work_journal/claude_code/` — Claude Code activity collection
+- `src/work_journal/insights/` — Claude Code insights report parsing and classification
 - `src/work_journal/collect_project_status.py` — Project status data collection (GitHub, Jira, Calendar)
 - `tests/` — Test suite
 - `work/sprint-notes/` — Sprint note data and drafts. Each sprint is a subdirectory (e.g., `2026-02-A/`).
 - `work/sprint-notes/{sprint}/sprint.yaml` — Sprint-level config (just the `sprint_name` field)
+- `work/shared/` — Cross-process inputs (insights reports)
+- `work/shared/insights/raw/` — Raw HTML from Claude Code `/insights` command
+- `work/shared/insights/parsed/` — Classified JSON from parsing script
+- `work/shared/insights/cleaned/` — Final cleaned markdown for use by draft skills
 - `work/project-status/` — Project status update data and drafts
 - `work/progress-briefs/` — Quarterly progress brief artifacts (forms, Jira exports, authored docs, drafts)
 - `work/okrs/` — OKR tracking
@@ -77,13 +82,18 @@ The canonical source for this mapping is `config/shared.yaml` under `project_nam
 ## Sprint notes workflow
 
 1. Scaffold sprint directory: `uv run python3 src/work_journal/scaffold.py sprint {sprint} --var sprint_name="{jira-sprint-name}"`
-2. Collect data: `uv run python3 src/work_journal/collect.py {sprint}`
-3. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
-4. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
-5. Draft via skill: `/draft-sprint-notes {sprint}`
-6. Upload to Google Docs: `/upload-sprint-notes {sprint}`
+2. Prepare insights report (collect.py gates on this):
+   a. Run `/insights` in Claude Code for the sprint date range
+   b. Copy the HTML to `work/shared/insights/raw/{sprint}.html`
+   c. Parse: `uv run python3 src/work_journal/insights/cli.py {sprint}`
+   d. Clean: `/clean-insights {sprint}`
+3. Collect data: `uv run python3 src/work_journal/collect.py {sprint}`
+4. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
+5. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
+6. Draft via skill: `/draft-sprint-notes {sprint}`
+7. Upload to Google Docs: `/upload-sprint-notes {sprint}`
 
-Steps 3 and 4 are optional but significantly improve draft quality. Step 4 saves its output to files, so re-drafting (step 5) doesn't re-fetch MCP data.
+Steps 4 and 5 are optional but significantly improve draft quality. Step 5 saves its output to files, so re-drafting (step 6) doesn't re-fetch MCP data.
 
 ## Project status updates workflow
 

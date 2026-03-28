@@ -23,6 +23,11 @@ src/                              # Python scripts
   git/
     query_git_log.py              # Local git commits
 work/                             # Working data and outputs
+  shared/                         # Cross-process inputs
+    insights/                     # Claude Code /insights reports
+      raw/                        # Raw HTML (manual copy)
+      parsed/                     # Classified JSON (from parse script)
+      cleaned/                    # Cleaned markdown (from /clean-insights skill)
   sprint-notes/                   # Biweekly sprint notes (see work/sprint-notes/README.md)
     config.yaml                   # Repo-level collection config
     template-dir-sprint-name/     # Template for new sprints
@@ -42,16 +47,22 @@ docs/                             # Plans and design documents
 
 ```bash
 # 1. Create sprint directory
-cp -r work/sprint-notes/template-dir-sprint-name work/sprint-notes/2026-02-B
-# Edit work/sprint-notes/2026-02-B/sprint.yaml — set sprint_name
+uv run python3 src/work_journal/scaffold.py sprint 2026-02-B \
+  --var sprint_name="2026-02-B-Product-February"
 
-# 2. Collect data
-uv run python3 src/collect.py 2026-02-B
+# 2. Prepare insights report (collect.py requires this)
+#    Run /insights in Claude Code, then:
+cp ~/path/to/insights-report.html work/shared/insights/raw/2026-02-B.html
+uv run python3 src/work_journal/insights/cli.py 2026-02-B
+#    Then run /clean-insights 2026-02-B in Claude Code
 
-# 3. Add manual context (Slack links, meeting notes, etc.)
+# 3. Collect data
+uv run python3 src/work_journal/collect.py 2026-02-B
+
+# 4. Add manual context (Slack links, meeting notes, etc.)
 #    Edit work/sprint-notes/2026-02-B/manual-notes.md
 
-# 4. Draft sprint notes via Claude skill
+# 5. Draft sprint notes via Claude skill
 #    /draft-sprint-notes 2026-02-B
 ```
 
