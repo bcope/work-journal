@@ -42,10 +42,24 @@ Read the following files from `work/sprint-notes/{sprint}/`:
    - `git/between-sprints-commit-log.md` -- Commits in the gap. Optional.
    - `claude-code/between-sprints-sessions.md` -- Claude Code sessions in the gap. Optional.
 6. **`manual-notes.md`** -- User-curated notes (Slack links, email summaries, meeting notes). Optional.
-7. **Claude Code insights** -- `work/shared/insights/cleaned/{sprint}.md`. Pre-cleaned
-   insights report covering work areas, accomplishments, friction points, and usage
-   notes. Use this to inform the Claude Code / developer productivity sections of the
-   sprint notes. This file is always present (collect.py gates on it).
+7. **Claude Code insights** -- one or more cleaned files in
+   `work/shared/insights/cleaned/` whose date range overlaps the sprint period.
+   Files are named `{start}-to-{end}.md`. Find candidates by reading the
+   sprint date range from `jira/sprint-info.json` and listing cleaned files
+   whose `[start, end]` overlaps the sprint dates.
+
+   **Important framing:** The /insights tool reports on a rolling 30-day window,
+   so the cleaned file typically covers more than a single sprint -- it may
+   span the prior sprint and part of the next one. Use the cleaned insights as
+   **commentary on working patterns and productivity** (informing the
+   Developer Tooling / AI Toolkit narrative paragraphs and any retrospective
+   commentary). **Do not** use insights items as primary accomplishment
+   headlines -- the actual accomplishments come from sprint-scoped sources
+   (Jira, GitHub, git, and `claude-code/sessions.md`, all of which are
+   strictly date-filtered to this sprint).
+
+   If no overlapping insights file exists, proceed without one and note the
+   gap in the draft.
 
 If a file is missing, note it and continue with available data.
 
@@ -62,11 +76,13 @@ If `/enrich-sprint-data` was run, read the enrichment output files:
 0. **`enrichment-summary.md`** -- Read this first. Check the Coverage Assessment for each source. If a source has `low` or `none` coverage, keep that in mind -- you will need to add TODO markers in the draft where that source would have provided context.
 1. **`email/highlights.md`** -- Key email threads with decisions, requests, and stakeholder context. Explains *why* work happened.
 2. **`calendar/events.md`** -- Meeting activity. Non-recurring events are high signal. Attendee cross-references show collaboration patterns.
-3. **`google-docs/doc-summaries.md`** -- Documents modified during the sprint. Connects Jira issues to the analysis that explains *why the work mattered*.
+3. **`google-docs/doc-summaries.md`** -- Documents created in (or explicitly referenced from) the sprint, with summaries. Connects Jira issues to the analysis that explains *why the work mattered*.
 4. **`jira/issue-details.md`** -- Comments and deeper context on key issues. Impact metrics, decision rationale, stakeholder context.
 5. **`prior-sprint/continuity.md`** -- Carryover themes, incomplete work from the prior sprint, and prior metrics useful for showing progress over time.
 
 If enrichment files don't exist, proceed with available data. The draft will have more `TODO` markers but is still useful.
+
+**Do not** read `google-docs/modified-not-created.md`. That file is an audit list of documents touched during the sprint window but created earlier — most of which represent prior work whose `modifiedTime` was bumped by a permission tweak, an open-with-autosave, or a collaborator's edit. The user reviews that list manually and folds any genuine sprint-period work into `doc-summaries.md` before drafting. If `doc-summaries.md` is missing or thin and you need more Google Docs context, surface that as a TODO rather than pulling from `modified-not-created.md`.
 
 **Fallback:** If enrichment was not run and you need specific context for a key accomplishment, make targeted MCP calls (e.g., `mcp__jira__get_comments` for a single critical issue). But prefer running the full enrichment skill first.
 
@@ -151,6 +167,67 @@ messages inline.
 
 Save the draft to `work/sprint-notes/{sprint}/draft.md`.
 
+### Phase 5: Annotations and impact metrics
+
+After saving the draft, produce two structured outputs that feed the quarterly progress brief pipeline.
+
+#### 5a: Business value annotations
+
+Create `work/sprint-notes/{sprint}/annotations.yaml` with one entry per H3 accomplishment in the draft. Reference the value category vocabulary from `config/shared.yaml` under `value_categories`.
+
+```yaml
+sprint: "2026-03-B"
+accomplishments:
+  - headline: "Automated the GG-driven redesignation workflow end-to-end"
+    project: Compliance
+    value_categories: [process_efficiency, risk_reduction]
+    summary: >
+      Built complete automation pipeline for monthly redesignation,
+      eliminating manual work across Google Sheets, Salesforce, and database.
+    jira_keys: [COMPLY-697, COMPLY-698]
+```
+
+Each entry should have:
+
+- `headline` -- the H3 text from the draft
+- `project` -- the readable project name (from `config/shared.yaml` `project_names`)
+- `value_categories` -- one or more categories from the vocabulary that describe the business value
+- `summary` -- one sentence capturing why this work mattered (business outcome, not technical description)
+- `jira_keys` -- list of Jira issue keys associated with this accomplishment (empty list if none)
+
+Do not annotate routine work (brief mentions that don't have their own H3). Only annotate key accomplishments.
+
+#### 5b: Impact metrics extraction
+
+Scan the draft for quantified outcomes: percentages, dollar amounts, time savings, counts, before/after comparisons. For each, append an entry to the quarter's impact metrics file.
+
+Determine the quarter from the sprint name: months 1-3 = Q1, 4-6 = Q2, 7-9 = Q3, 10-12 = Q4. The file location is `work/progress-briefs/{YEAR}-{QUARTER}/impact-metrics.yaml`.
+
+If the file does not exist, create it with a `metrics: []` key first, then append. If it already has entries, read it, append the new entries, and write it back. Do not duplicate entries from the same sprint -- if entries for this sprint already exist, replace them.
+
+```yaml
+metrics:
+  - sprint: "2026-03-B"
+    project: Compliance
+    headline: "Automated the GG-driven redesignation workflow end-to-end"
+    metric: "13 commits across 5 Claude Code sessions (~2h 10m thinking time)"
+    type: count
+  - sprint: "2026-03-B"
+    project: Upkeep
+    headline: "GGSP shared drive audit: 98,165 files, 183.5 GB"
+    metric: "76% of files haven't been modified since 2022"
+    type: percentage
+    value: "76%"
+```
+
+Metric types: `percentage`, `dollar_amount`, `time_savings`, `count`, `data_point`.
+
+Include a `value` field when the metric has a single clear numeric value. Omit it for composite or descriptive metrics.
+
+If no quantified outcomes are found in the draft, skip this step (not every sprint will have impact metrics).
+
+If the progress brief directory for the quarter does not exist yet, skip this step and note it in the output -- the user can run `scaffold.py progress-brief` later.
+
 ## Directory structure
 
 ```
@@ -183,11 +260,13 @@ work/sprint-notes/
       events.md                                 # Calendar enrichment (from /enrich-sprint-data)
     google-docs/
       doc-summaries.md                          # Google Docs enrichment (from /enrich-sprint-data)
+      modified-not-created.md                   # Audit list of touched-but-not-created docs (NOT loaded by this skill)
     prior-sprint/
       continuity.md                             # Prior sprint carryover (from /enrich-sprint-data)
     manual-notes.md                             # User-curated
     enrichment-summary.md                       # Enrichment quality/coverage (from /enrich-sprint-data)
     draft.md                                    # Output of this skill
+    annotations.yaml                            # Business value annotations (from Phase 5)
 ```
 
 ## Tips

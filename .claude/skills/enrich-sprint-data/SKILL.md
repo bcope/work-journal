@@ -158,7 +158,7 @@ Write `calendar/events.md`:
 
 ### Phase 4: Google Docs enrichment
 
-**Goal:** Find documents created or modified during the sprint that provide evidence of accomplishments, analysis, or decisions.
+**Goal:** Find documents the user created or substantively edited during the sprint that provide evidence of accomplishments, analysis, or decisions.
 
 #### Step 1: Search for docs in the date range
 
@@ -168,17 +168,45 @@ Use `mcp__gdocs__search_files` with:
 owner:{owner_email} after:{start_date} before:{end_date}
 ```
 
+The Drive search query operator `after:` matches `modifiedTime`, which over-includes
+docs that were merely opened or had their permissions touched. The MCP returns
+richer metadata (`createdTime`, `modifiedByMeTime`, `lastModifyingUser`,
+`version`, `trashed`, `owners`, `parents`, `shared`, `starred`, `description`,
+`driveId`) so we triage in Step 3 rather than relying on the search filter alone.
+
 #### Step 2: Fetch known doc URLs
 
-If Phase 1 extracted Google Doc/Sheet URLs from Jira issue descriptions, fetch those directly using `mcp__gdocs__read_doc` or `mcp__gdocs__read_sheet`.
+If Phase 1 extracted Google Doc/Sheet URLs from Jira issue descriptions, fetch those directly using `mcp__gdocs__read_doc` or `mcp__gdocs__read_sheet`. These count as primary regardless of timing — they're explicitly referenced by sprint work.
 
-#### Step 3: Assess relevance and read key docs
+#### Step 3: Triage results into three buckets
 
-Prioritize memos, analysis docs, and assessments (high value) over templates and admin docs (skip). Use `mcp__gdocs__read_doc` for relevant documents and `mcp__gdocs__get_doc_comments` for documents with comments -- comments often contain approval signals and decision context.
+Drop any file with `trashed: true` outright. For everything else, classify into one of:
+
+- **Bucket A — Created in sprint window.** `createdTime` falls within `[start_date, end_date]`. These are the primary key documents. Read in full, summarize, and write to `google-docs/doc-summaries.md` with Jira cross-references and comment context (`mcp__gdocs__get_doc_comments`).
+- **Bucket B — Created earlier, but the user attributably touched it during the sprint.** `createdTime < start_date` AND `modifiedByMeTime` is within `[start_date, end_date]`. **Important caveat:** `modifiedByMeTime` bumps for *any* user-attributable change, including permission/share edits — not just content changes. To distinguish, the skill calls `mcp__gdocs__get_revisions` for each Bucket B candidate and inspects whether any revisions exist with `modifiedTime` inside the window. If yes, the file represents real content work and stays in Bucket B; if no in-window revisions exist, demote to Bucket C with a note that the change was metadata-only (typically a permission/share tweak). Log results to `google-docs/modified-not-created.md` with both timestamps and the revision-check finding. Do NOT auto-summarize; the user reviews and manually moves any genuine sprint work into `doc-summaries.md`.
+- **Bucket C — Touched in window, but not by the user.** `modifiedTime` in window but `modifiedByMeTime` is missing or outside the window. Probably a collaborator edit or a metadata-only change. Log under a separate section of `modified-not-created.md` for audit visibility.
+
+Tiebreakers and edge cases:
+
+- A doc explicitly referenced from a Jira issue (Step 2) goes into `doc-summaries.md` regardless of bucket.
+- Templates and admin docs are skipped as today.
+- `version` field on the Files resource bumps for any modification (including metadata) — it is *not* a reliable proxy for content change. Use `get_revisions` instead.
+
+#### Step 3b: Revision check for Bucket B candidates
+
+For each Bucket B candidate (created earlier, `modifiedByMeTime` in window), call `mcp__gdocs__get_revisions` with the file's `id`. Inspect the returned revisions:
+
+- **Has at least one revision with `modifiedTime` in the sprint window AND `lastModifyingUser.emailAddress` matching the user's email** → confirmed content edit by the user. Keep in Bucket B; mark as "content-confirmed" in the output.
+- **Has revisions in window but none by the user** → demote to Bucket C ("collaborator content edit") with a note.
+- **No revisions in window at all** → demote to Bucket C ("metadata-only / permission change") with a note. This is the common false-positive case: opening a doc, sharing it, or tweaking permissions bumps `modifiedTime` and `modifiedByMeTime` without producing a revision.
+
+Caveat: For Google-native docs (Docs/Sheets/Slides), intermediate revisions may be auto-purged after ~30 days unless explicitly pinned with `keepForever`. For sprint windows ≤ 2–3 weeks this is rarely an issue, but for older sprints the revision list may be sparse. If the revision list is empty AND `createdTime` predates the typical 30-day retention window, treat the result as inconclusive rather than confirmed-Bucket-C; flag it in the output for manual review.
+
+For Bucket A and Bucket C candidates, the revision check is unnecessary — A is already confirmed (created in window) and C was never user-attributable to begin with.
 
 #### Step 4: Save output
 
-Write `google-docs/doc-summaries.md`:
+Write `google-docs/doc-summaries.md` (Bucket A + Step 2 docs only):
 
 ```markdown
 # Google Docs Activity
@@ -189,18 +217,53 @@ Write `google-docs/doc-summaries.md`:
 
 ### {Document title}
 - **URL:** {url}
+- **Created:** {createdTime}  |  **Last modified by me:** {modifiedByMeTime}
 - **Related to:** {Jira issue key(s) or project}
 - **Summary:** {3-5 sentence summary}
 - **Key data points:** {any metrics or quantitative findings}
 - **Comments:** {summary of notable comments}
 
-## Other documents modified
-
-- [{title}]({url}) -- {one-line description}
-
 ## Documents not found
 
 - {Issue key} references a Google Doc but it was not accessible.
+```
+
+Also write `google-docs/modified-not-created.md` (Buckets B + C):
+
+```markdown
+# Documents modified during the sprint window but not created in it
+
+Review these and manually fold any real sprint-period work into
+`doc-summaries.md` (and the eventual draft).
+
+**Sprint dates:** {start_date} to {end_date}
+
+## Content-edited by me in window (Bucket B, revision-confirmed)
+
+- **{name}** ([url]({url}))
+  - Created: {createdTime}  |  modifiedByMeTime: {ts}
+  - Revisions in window by me: {N} (most recent: {revisionTimestamp})
+  - mimeType: {mimeType}, size: {size}
+  - One-line description (no full read).
+
+## Touched in window but not content-edited (Bucket C, revision-check confirms metadata-only)
+
+- **{name}** ([url]({url}))
+  - Created: {createdTime}  |  modifiedTime: {ts}  |  lastModifyingUser: {name}
+  - get_revisions returned no in-window revisions → permission/share/metadata change only.
+
+## Touched in window by a collaborator (Bucket C, content edit but not by me)
+
+- **{name}** ([url]({url}))
+  - Created: {createdTime}  |  modifiedTime: {ts}  |  lastModifyingUser: {name}
+  - In-window revisions exist but none are mine.
+
+## Inconclusive (revision history older than ~30-day retention)
+
+- **{name}** ([url]({url}))
+  - Created: {createdTime}  |  modifiedByMeTime: {ts}
+  - get_revisions returned no entries; doc may have had revisions auto-purged.
+    Manual review recommended.
 ```
 
 ### Phase 5: Jira enrichment
@@ -287,7 +350,8 @@ All saved to `work/sprint-notes/{sprint}/`:
 | --- | --- |
 | `email/highlights.md` | Key email threads, stakeholder patterns |
 | `calendar/events.md` | Meeting activity, non-recurring events, attendee patterns |
-| `google-docs/doc-summaries.md` | Documents modified during sprint with summaries |
+| `google-docs/doc-summaries.md` | Documents created in (or explicitly referenced from) the sprint, with summaries |
+| `google-docs/modified-not-created.md` | Audit list of docs touched in the window but created earlier — manual review whether any belong in `doc-summaries.md` |
 | `jira/issue-details.md` | Comments and context on key issues |
 | `prior-sprint/continuity.md` | Carryover themes, incomplete work, prior metrics |
 | `enrichment-summary.md` | Persistent summary with results, warnings, and coverage assessment |
@@ -296,7 +360,7 @@ All saved to `work/sprint-notes/{sprint}/`:
 
 ### Per-file Data Quality table
 
-Every enrichment output file (`email/highlights.md`, `calendar/events.md`, `google-docs/doc-summaries.md`, `jira/issue-details.md`, `prior-sprint/continuity.md`) must end with a `## Data quality` section separated by a horizontal rule. This table logs every MCP call made during that phase, including successful ones.
+Every enrichment output file (`email/highlights.md`, `calendar/events.md`, `google-docs/doc-summaries.md`, `google-docs/modified-not-created.md`, `jira/issue-details.md`, `prior-sprint/continuity.md`) must end with a `## Data quality` section separated by a horizontal rule. This table logs every MCP call made during that phase, including successful ones. The Google Docs phase Data Quality table should also report counts for each triage bucket: created-in-window, modified-by-me-but-created-earlier, touched-by-others.
 
 ```markdown
 ---
