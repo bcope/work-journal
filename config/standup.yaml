@@ -1,11 +1,29 @@
 # Configuration for daily stand-up notes generation.
 
 queries:
+  # filter 15385 identifies all test projects in Jira
+  # Time Tracking issuetype = monthly time-tracking buckets (e.g., GGL-* PTO/Meetings/Scrum
+  # Leadership). They are only meaningful via worklogs or sprint injection — a status
+  # transition on one is bookkeeping, not work done. Excluded from completed/in-progress/blocked.
   completed_yesterday:
-    jql: 'assignee = {account_id} AND updated >= "{yesterday}" AND updated < "{today}" AND statusCategory = Done'
+    jql: 'assignee = {account_id} AND updated >= "{yesterday}" AND updated < "{today}" AND statusCategory = Done AND issuetype != "Time Tracking" AND filter != 15385'
   in_progress:
-    jql: 'assignee = {account_id} AND statusCategory = "In Progress"'
+    # Exclude In Progress Epics unless they are in the active sprint OR the user
+    # logged work on them during the stand-up period.
+    # Exclude HELP Researching issues that are not in the active sprint--they have no way of being moved back to the Open statusCategory
+    # {today_sprint_filter} restricts to the active sprint (or unsprinted work);
+    # issues in other sprints surface in `status_mismatch` instead.
+    jql: 'assignee = {account_id} AND statusCategory = "In Progress" AND issuetype != "Time Tracking" AND (issuetype != Epic OR {epic_relevance_filter}) AND NOT (project = HELP AND status = Researching AND (sprint IS EMPTY OR sprint != {sprint_id})) AND {today_sprint_filter} AND filter != 15385'
+  status_mismatch:
+    # In Progress issues assigned to the user that sit in a sprint other than the
+    # active one — typically future-sprint work whose status was never reset, or
+    # stale tickets. Surfaced as a daily nudge so the user can decide whether to
+    # transition them or leave them.
+    # Epics and Time Tracking issues are excluded — epics legitimately span sprints.
+    jql: 'assignee = {account_id} AND statusCategory = "In Progress" AND issuetype != "Time Tracking" AND issuetype != Epic AND sprint IS NOT EMPTY AND sprint != {sprint_id} AND filter != 15385'
+  work_logged_yesterday:
+    jql: 'worklogAuthor = {account_id} AND worklogDate = "{yesterday}" AND filter != 15385'
   blocked:
-    jql: "assignee = {account_id} and filter = 15541 and sprint = {sprint_id} and statusCategory != done"
+    jql: 'assignee = {account_id} and filter = 15541 and sprint = {sprint_id} and statusCategory != done AND issuetype != "Time Tracking" AND filter != 15385'
   injected:
-    jql: "assignee = {account_id} and labels = added_to_sprint-id-{sprint_id} and {injected_date_filter}"
+    jql: "assignee = {account_id} and labels = added_to_sprint-id-{sprint_id} and {injected_date_filter} AND filter != 15385"

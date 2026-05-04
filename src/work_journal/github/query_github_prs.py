@@ -123,6 +123,39 @@ def search_merged_prs(since: str, until: str, org: str, author: str | None = Non
     return json.loads(result.stdout) if result.stdout.strip() else []
 
 
+def search_closed_prs(since: str, until: str, org: str, author: str | None = None) -> list[dict]:
+    """Search for PRs closed (but not merged) in the date range.
+
+    Uses the --closed date filter to find PRs closed in the range, then
+    filters out merged PRs (state == "MERGED") since GitHub considers
+    merged PRs as closed too.
+
+    Returns an empty list on error instead of exiting.
+    """
+    author_flag = f"--author={author}" if author else "--author=@me"
+    result = subprocess.run(
+        [
+            "gh",
+            "search",
+            "prs",
+            author_flag,
+            f"--closed={midnight_iso(since)}..{midnight_iso(until)}",
+            f"--owner={org}",
+            "--limit=50",
+            f"--json={PR_JSON_FIELDS}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print("Warning: gh search closed PRs failed:", file=sys.stderr)
+        print(f"  {result.stderr.strip()}", file=sys.stderr)
+        return []
+    prs = json.loads(result.stdout) if result.stdout.strip() else []
+    # Exclude merged PRs — only keep truly closed (not merged)
+    return [pr for pr in prs if pr.get("state", "").upper() != "MERGED"]
+
+
 def search_open_prs(org: str, author: str | None = None, since: str | None = None) -> list[dict]:
     """Search for open PRs owned by the author.
 
@@ -160,6 +193,17 @@ def _repo_name(pr: dict) -> str:
     return repo.get("nameWithOwner", repo.get("name", "unknown"))
 
 
+_STATE_ORDER = {"MERGED": 0, "OPEN": 1, "CLOSED": 2}
+
+
+def _sort_prs_by_state(prs: list[dict]) -> list[dict]:
+    """Sort PRs by state (merged first, then open, then closed), then by number."""
+    return sorted(
+        prs,
+        key=lambda p: (_STATE_ORDER.get(p.get("state", "").upper(), 9), p.get("number", 0)),
+    )
+
+
 def _format_markdown(authored: list[dict], reviewed: list[dict]) -> str:
     """Format PR data as markdown grouped by repo."""
     lines: list[str] = []
@@ -174,7 +218,7 @@ def _format_markdown(authored: list[dict], reviewed: list[dict]) -> str:
         for repo in sorted(by_repo):
             lines.append(f"### {repo}")
             lines.append("")
-            for pr in sorted(by_repo[repo], key=lambda p: p.get("number", 0)):
+            for pr in _sort_prs_by_state(by_repo[repo]):
                 state = pr.get("state", "").upper()
                 title = pr.get("title", "")
                 url = pr.get("url", "")
@@ -192,7 +236,7 @@ def _format_markdown(authored: list[dict], reviewed: list[dict]) -> str:
         for repo in sorted(by_repo):
             lines.append(f"### {repo}")
             lines.append("")
-            for pr in sorted(by_repo[repo], key=lambda p: p.get("number", 0)):
+            for pr in _sort_prs_by_state(by_repo[repo]):
                 state = pr.get("state", "").upper()
                 title = pr.get("title", "")
                 url = pr.get("url", "")

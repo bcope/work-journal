@@ -28,7 +28,11 @@ from work_journal.claude_code.collect_activity import (
 from work_journal.config import load_shared_config, load_standup_config
 from work_journal.git.query_git_log import find_git_repos, get_commits
 from work_journal.git.query_git_log import format_markdown as format_git_markdown
-from work_journal.github.query_github_prs import search_merged_prs, search_open_prs
+from work_journal.github.query_github_prs import (
+    search_closed_prs,
+    search_merged_prs,
+    search_open_prs,
+)
 from work_journal.jira.query_issues import search_issues
 from work_journal.jira.query_sprint_info import DEFAULT_BOARD_ID, _make_session, list_sprints
 from work_journal.paths import STANDUP_DIR
@@ -192,19 +196,34 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
 
     injected_date_filter = build_date_label_filter("added_to_sprint-date-", yesterday, today)
 
+    # For In Progress Epics: only include if in the active sprint OR the user logged
+    # work on them during the stand-up period. Worklog-only when no active sprint.
+    worklog_clause = f'(worklogAuthor = {account_id} AND worklogDate >= "{yesterday_str}")'
+    if sprint_id:
+        epic_relevance_filter = f"(sprint = {sprint_id} OR {worklog_clause})"
+        today_sprint_filter = f"(sprint IS EMPTY OR sprint = {sprint_id})"
+    else:
+        epic_relevance_filter = worklog_clause
+        # No active sprint — don't filter by sprint.
+        today_sprint_filter = "(sprint IS EMPTY OR sprint IS NOT EMPTY)"
+
     variables = {
         "account_id": account_id,
         "yesterday": yesterday_str,
         "today": today_str,
         "sprint_id": sprint_id,
         "injected_date_filter": injected_date_filter,
+        "epic_relevance_filter": epic_relevance_filter,
+        "today_sprint_filter": today_sprint_filter,
     }
 
     data: dict = {
         "yesterday": yesterday_str,
         "today": today_str,
-        "completed": {"jira": [], "prs": [], "commits": ""},
+        "completed": {"jira": [], "prs": [], "closed_prs": [], "commits": ""},
+        "work_logged": {"jira": []},
         "in_progress": {"jira": [], "prs": []},
+        "status_mismatch": {"jira": []},
         "blocked": {"jira": []},
         "injected": {"jira": []},
         "warnings": warnings,
@@ -227,8 +246,26 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
     except Exception as e:
         _warn(warnings, f"Merged PRs query failed: {e}")
 
+    # --- Yesterday: closed (not merged) PRs ---
+    try:
+        data["completed"]["closed_prs"] = search_closed_prs(
+            yesterday_str, today_str, org, author=git_author
+        )
+    except Exception as e:
+        _warn(warnings, f"Closed PRs query failed: {e}")
+
     # --- Yesterday: git commits ---
     data["completed"]["commits"] = query_git_log(yesterday_str, today_str, warnings)
+
+    # --- Yesterday: issues with worklog entries (excluding those already shown as completed) ---
+    work_logged_jql_template = standup_queries.get("work_logged_yesterday", {}).get("jql", "")
+    if work_logged_jql_template:
+        work_logged_jql = template_jql(work_logged_jql_template, variables)
+        work_logged_issues = query_jira(work_logged_jql, warnings, "Work logged yesterday (Jira)")
+        completed_keys = {i.get("key") for i in data["completed"]["jira"]}
+        data["work_logged"]["jira"] = [
+            i for i in work_logged_issues if i.get("key") not in completed_keys
+        ]
 
     # --- Today: in-progress Jira issues ---
     in_progress_jql_template = standup_queries.get("in_progress", {}).get(
@@ -244,6 +281,14 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
         data["in_progress"]["prs"] = search_open_prs(org, author=git_author, since=open_since)
     except Exception as e:
         _warn(warnings, f"Open PRs query failed: {e}")
+
+    # --- Status mismatch (In Progress but not in the active sprint) ---
+    status_mismatch_jql_template = standup_queries.get("status_mismatch", {}).get("jql", "")
+    if status_mismatch_jql_template and sprint_id:
+        status_mismatch_jql = template_jql(status_mismatch_jql_template, variables)
+        data["status_mismatch"]["jira"] = query_jira(
+            status_mismatch_jql, warnings, "Status mismatch (Jira)"
+        )
 
     # --- Blocked ---
     blocked_jql_template = standup_queries.get("blocked", {}).get("jql", "")
@@ -353,12 +398,29 @@ def format_markdown(data: dict, project_names: dict) -> str:
             lines.append(format_jira_issue(issue, project_names))
         lines.append("")
 
+    # Work logged on issues (not yet done)
+    work_logged_jira = data.get("work_logged", {}).get("jira", [])
+    if work_logged_jira:
+        lines.append("### Jira (work logged, not closed)")
+        lines.append("")
+        for issue in work_logged_jira:
+            lines.append(format_jira_issue(issue, project_names))
+        lines.append("")
+
     # Merged PRs
     merged_lines = format_github_prs(data["completed"]["prs"], "merged")
     if merged_lines:
-        lines.append("### Pull requests")
+        lines.append("### Pull requests (merged)")
         lines.append("")
         lines.extend(merged_lines)
+        lines.append("")
+
+    # Closed (not merged) PRs
+    closed_lines = format_github_prs(data["completed"].get("closed_prs", []), "closed")
+    if closed_lines:
+        lines.append("### Pull requests (closed, not merged)")
+        lines.append("")
+        lines.extend(closed_lines)
         lines.append("")
 
     # Git commits
@@ -375,7 +437,14 @@ def format_markdown(data: dict, project_names: dict) -> str:
         lines.extend(claude_lines)
 
     # Check if yesterday section is empty
-    has_yesterday = completed_jira or merged_lines or commits or claude_lines
+    has_yesterday = (
+        completed_jira
+        or work_logged_jira
+        or merged_lines
+        or closed_lines
+        or commits
+        or claude_lines
+    )
     if not has_yesterday:
         lines.append("Nothing tracked.")
         lines.append("")
@@ -423,6 +492,15 @@ def format_markdown(data: dict, project_names: dict) -> str:
         lines.append("## Injected into sprint")
         lines.append("")
         for issue in injected_jira:
+            lines.append(format_jira_issue(issue, project_names))
+        lines.append("")
+
+    # --- Status check (In Progress but not in active sprint) ---
+    status_mismatch_jira = data.get("status_mismatch", {}).get("jira", [])
+    if status_mismatch_jira:
+        lines.append("## Status check (In Progress, not in active sprint)")
+        lines.append("")
+        for issue in status_mismatch_jira:
             lines.append(format_jira_issue(issue, project_names))
         lines.append("")
 
