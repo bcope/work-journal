@@ -12,8 +12,25 @@ judgment calls.
 
 ## Input
 
-Read `work/shared/insights/parsed/{sprint}.json` where `{sprint}` is the argument
-provided by the user (e.g., `2026-03-A`).
+The argument is a date-range identifier in the form `YYYY-MM-DD-to-YYYY-MM-DD`
+(e.g., `2026-03-16-to-2026-04-15`). Read
+`work/shared/insights/parsed/{date_range}.json`.
+
+If the user supplies something else (a sprint name, a partial date, etc.), look
+in `work/shared/insights/parsed/` for the most recent file matching their
+intent and confirm before proceeding.
+
+## Important framing: insights are pattern observations, not accomplishment lists
+
+The /insights tool reports on a rolling 30-day window, which rarely lines up
+exactly with a sprint. Treat the cleaned output as **commentary on working
+patterns and productivity** -- not as a definitive list of what was delivered
+in a specific sprint. The actual accomplishments come from sprint-scoped
+sources (Jira, GitHub, git, Claude Code session data).
+
+When in doubt, prefer items that describe *how* work was done (techniques,
+patterns, friction) over items that describe *what* was delivered (project
+names, headlines).
 
 ## Rules
 
@@ -58,10 +75,14 @@ These always mix personal and work content. Rewrite them to:
 
 ## Output format
 
-Save to `work/shared/insights/cleaned/{sprint}.md`:
+Save to `work/shared/insights/cleaned/{date_range}.md` (same date-range stem
+as the input). The first line of content must be a `**Date range:**` header
+so downstream skills know the window this report covers.
 
 ```markdown
-# Claude Code Insights: {sprint}
+# Claude Code Insights: {date_range}
+
+**Date range:** {start} to {end} (rolling 30-day window from /insights)
 
 ## Summary
 
@@ -73,7 +94,13 @@ what hindered, and any notable patterns. Work-relevant only.)
 - **Area Name** (~N sessions) -- Description.
 - ...
 
-## Accomplishments
+## Pattern Observations
+
+(Reframe the "Big Wins" / "Impressive Things You Did" section here.
+These are *patterns and techniques* that played out across the window,
+NOT a list of sprint accomplishments. Phrase them in terms of working
+style: "Heavy investment in durable infrastructure...", "Aggressive use
+of parallel agent dispatching...", etc.)
 
 - **Title** -- Description.
 - ...

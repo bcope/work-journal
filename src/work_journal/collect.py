@@ -30,6 +30,7 @@ from work_journal.github.query_github_prs import (
 from work_journal.github.query_github_prs import (
     _format_markdown as format_pr_markdown,
 )
+from work_journal.insights.lookup import find_matching_insights
 from work_journal.jira.query_issues import search_issues
 from work_journal.jira.query_sprint_info import (
     _make_session,
@@ -284,20 +285,6 @@ def main():
         )
         sys.exit(1)
 
-    # Check for cleaned insights report
-    insights_path = INSIGHTS_CLEANED_DIR / f"{args.sprint}.md"
-    if not insights_path.exists():
-        print(
-            f"Error: No cleaned insights report found for {args.sprint}.\n"
-            f"  1. Run /insights for the sprint date range\n"
-            f"  2. Copy the HTML to work/shared/insights/raw/{args.sprint}.html\n"
-            f"  3. Run: uv run python3 src/work_journal/insights/cli.py {args.sprint}\n"
-            f"  4. Run: /clean-insights {args.sprint}\n"
-            f"Then re-run collect.py.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     sprint_config = load_sprint_config(sprint_dir)
 
     # Resolve sprint to get dates and ID
@@ -307,6 +294,23 @@ def main():
     sprint_id = sprint_info["id"]
     print(f"  Sprint ID: {sprint_id}")
     print(f"  Dates: {start_date} to {end_date}")
+
+    # Check for a cleaned insights report whose date range overlaps the sprint
+    matching_insights = find_matching_insights(start_date, end_date, INSIGHTS_CLEANED_DIR)
+    if not matching_insights:
+        print(
+            f"\nError: No cleaned insights report overlaps {start_date} to {end_date}.\n"
+            f"  1. Run /insights in Claude Code to generate a usage report\n"
+            f"  2. Copy the HTML to work/shared/insights/raw/ "
+            f"(any filename — date range comes from the report)\n"
+            f"  3. Run: uv run python3 src/work_journal/insights/cli.py "
+            f"<raw filename>\n"
+            f"  4. Run: /clean-insights <date-range-id>\n"
+            f"Then re-run collect.py.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"  Insights: {', '.join(p.name for p in matching_insights)}")
 
     # Find previous sprint to capture between-sprints work
     prior_sprint = find_previous_sprint(session, board_id, sprint_info)

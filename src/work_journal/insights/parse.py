@@ -2,7 +2,21 @@
 
 from __future__ import annotations
 
+import re
+
 from bs4 import BeautifulSoup
+
+
+def extract_date_range(html: str) -> tuple[str, str] | None:
+    """Extract the (start_date, end_date) tuple from the report subtitle.
+
+    The subtitle reads like "1,570 messages across 158 sessions (197 total) |
+    2026-03-16 to 2026-04-15". Returns None if the range cannot be located.
+    """
+    match = re.search(r"(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})", html)
+    if not match:
+        return None
+    return match.group(1), match.group(2)
 
 
 def extract_project_areas(html: str) -> list[dict]:
@@ -213,8 +227,10 @@ def parse_insights_html(
     narrative_text = extract_narrative(cleaned_html)
     at_a_glance = extract_at_a_glance(cleaned_html)
     stats = extract_stats(cleaned_html)
+    date_range = extract_date_range(html)
 
     return {
+        "date_range": {"start": date_range[0], "end": date_range[1]} if date_range else None,
         "project_areas": project_areas,
         "big_wins": big_wins,
         "friction_categories": friction_categories,

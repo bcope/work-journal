@@ -1,4 +1,4 @@
-"""Tests for insights CLI (clean_insights.py)."""
+"""Tests for insights CLI (cli.py)."""
 
 import json
 
@@ -23,6 +23,7 @@ MINIMAL_HTML = """\
 <!DOCTYPE html>
 <html><head><title>Test</title></head>
 <body><div class="container">
+  <p class="subtitle">100 messages | 2026-03-16 to 2026-04-15</p>
   <div class="at-a-glance">
     <div class="glance-sections">
       <div class="glance-section"><strong>What's working:</strong> Good stuff.</div>
@@ -43,18 +44,26 @@ MINIMAL_HTML = """\
 </div></body></html>
 """
 
+HTML_WITHOUT_DATE_RANGE = """\
+<!DOCTYPE html>
+<html><body><div class="container">
+  <p class="subtitle">No dates here</p>
+</div></body></html>
+"""
+
 
 class TestRunParse:
-    def test_creates_parsed_json(self, insights_dirs):
+    def test_creates_parsed_json_named_by_date_range(self, insights_dirs):
         raw_dir, parsed_dir, _ = insights_dirs
-        (raw_dir / "2026-03-A.html").write_text(MINIMAL_HTML)
+        (raw_dir / "anything.html").write_text(MINIMAL_HTML)
         keywords = {"work_keywords": ["compliance"], "personal_keywords": ["evaluation"]}
 
-        run_parse("2026-03-A", raw_dir, parsed_dir, keywords)
+        run_parse(raw_dir / "anything.html", parsed_dir, keywords)
 
-        output = parsed_dir / "2026-03-A.json"
+        output = parsed_dir / "2026-03-16-to-2026-04-15.json"
         assert output.exists()
         data = json.loads(output.read_text())
+        assert data["date_range"] == {"start": "2026-03-16", "end": "2026-04-15"}
         assert "project_areas" in data
         assert data["project_areas"][0]["classification"] == "keep"
 
@@ -63,4 +72,12 @@ class TestRunParse:
         keywords = {"work_keywords": [], "personal_keywords": []}
 
         with pytest.raises(FileNotFoundError):
-            run_parse("2026-03-A", raw_dir, parsed_dir, keywords)
+            run_parse(raw_dir / "missing.html", parsed_dir, keywords)
+
+    def test_missing_date_range_raises(self, insights_dirs):
+        raw_dir, parsed_dir, _ = insights_dirs
+        (raw_dir / "no-dates.html").write_text(HTML_WITHOUT_DATE_RANGE)
+        keywords = {"work_keywords": [], "personal_keywords": []}
+
+        with pytest.raises(ValueError, match="Could not extract date range"):
+            run_parse(raw_dir / "no-dates.html", parsed_dir, keywords)
