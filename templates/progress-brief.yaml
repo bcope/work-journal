@@ -3,5 +3,7 @@ naming: "{name}"
 subdirs:
   - jira-issues
   - docs
-files: {}
+files:
+  impact-metrics.yaml: |
+    metrics: []
 required_vars: []

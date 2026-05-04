@@ -37,7 +37,7 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 - `src/work_journal/config.py` — Config loading with env var resolution (per-process loaders)
 - `src/work_journal/scaffold.py` — Config-driven directory scaffolding
 - `config/` — Configuration files (shared settings, per-process configs, project configs)
-- `config/shared.yaml` — Shared settings (project name mappings, Google Drive script path, insights keywords)
+- `config/shared.yaml` — Shared settings (project name mappings, value categories, Google Drive script path, insights keywords)
 - `config/sprint-notes.yaml` — Sprint notes collection config (JQL queries, output paths)
 - `config/standup.yaml` — Standup notes config (JQL queries)
 - `config/project-status.yaml` — Project status config (calendar, Google Drive)
@@ -51,13 +51,15 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 - `src/work_journal/claude_code/` — Claude Code activity collection
 - `src/work_journal/insights/` — Claude Code insights report parsing and classification
 - `src/work_journal/collect_project_status.py` — Project status data collection (GitHub, Jira, Calendar)
+- `src/work_journal/collect_progress_brief.py` — Quarterly rollup collection (aggregates sprint data for progress briefs)
+- `src/work_journal/quarters.py` — Quarter-sprint mapping utilities
 - `tests/` — Test suite
 - `work/sprint-notes/` — Sprint note data and drafts. Each sprint is a subdirectory (e.g., `2026-02-A/`).
 - `work/sprint-notes/{sprint}/sprint.yaml` — Sprint-level config (just the `sprint_name` field)
 - `work/shared/` — Cross-process inputs (insights reports)
-- `work/shared/insights/raw/` — Raw HTML from Claude Code `/insights` command
-- `work/shared/insights/parsed/` — Classified JSON from parsing script
-- `work/shared/insights/cleaned/` — Final cleaned markdown for use by draft skills
+- `work/shared/insights/raw/` — Raw HTML from Claude Code `/insights` command (any filename)
+- `work/shared/insights/parsed/` — Classified JSON, named `{start}-to-{end}.json` (date range from the report)
+- `work/shared/insights/cleaned/` — Final cleaned markdown, named `{start}-to-{end}.md`. Sprint and progress brief draft skills find files whose date range overlaps the sprint/quarter and treat them as pattern-level commentary, not accomplishment evidence.
 - `work/project-status/` — Project status update data and drafts
 - `work/progress-briefs/` — Quarterly progress brief artifacts (forms, Jira exports, authored docs, drafts)
 - `work/okrs/` — OKR tracking
@@ -82,11 +84,11 @@ The canonical source for this mapping is `config/shared.yaml` under `project_nam
 ## Sprint notes workflow
 
 1. Scaffold sprint directory: `uv run python3 src/work_journal/scaffold.py sprint {sprint} --var sprint_name="{jira-sprint-name}"`
-2. Prepare insights report (collect.py gates on this):
-   a. Run `/insights` in Claude Code for the sprint date range
-   b. Copy the HTML to `work/shared/insights/raw/{sprint}.html`
-   c. Parse: `uv run python3 src/work_journal/insights/cli.py {sprint}`
-   d. Clean: `/clean-insights {sprint}`
+2. Prepare insights report (collect.py gates on this — needs at least one cleaned report whose date range overlaps the sprint):
+   a. Run `/insights` in Claude Code (covers a rolling 30-day window)
+   b. Copy the HTML to `work/shared/insights/raw/` (any filename — the date range is read from the report itself)
+   c. Parse: `uv run python3 src/work_journal/insights/cli.py <raw-filename>` (writes `parsed/{start}-to-{end}.json`)
+   d. Clean: `/clean-insights {start}-to-{end}` (writes `cleaned/{start}-to-{end}.md`)
 3. Collect data: `uv run python3 src/work_journal/collect.py {sprint}`
 4. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
 5. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
@@ -94,6 +96,20 @@ The canonical source for this mapping is `config/shared.yaml` under `project_nam
 7. Upload to Google Docs: `/upload-sprint-notes {sprint}`
 
 Steps 4 and 5 are optional but significantly improve draft quality. Step 5 saves its output to files, so re-drafting (step 6) doesn't re-fetch MCP data.
+
+Step 6 also produces `annotations.yaml` (business value tags per accomplishment) and appends impact metrics to the quarter's `impact-metrics.yaml`. These feed the progress brief pipeline.
+
+## Progress brief workflow
+
+1. Scaffold: `uv run python3 src/work_journal/scaffold.py progress-brief {YEAR}-{QUARTER}`
+2. (Sprint notes should already exist from the sprint workflow above, including annotations and impact metrics)
+3. Collect rollup: `uv run python3 src/work_journal/collect_progress_brief.py {YEAR}-{QUARTER}`
+4. Copy form PDFs to `work/progress-briefs/{YEAR}-{QUARTER}/format/`
+5. Optionally add supplementary docs to `docs/`
+6. Draft: `/draft-progress-brief {YEAR}-{QUARTER}`
+7. Edit and finalize
+
+The rollup script aggregates sprint notes, annotations, Jira issue counts, PR counts, Claude Code stats, and enrichment highlights into a single `rollup.md` that serves as the primary input for drafting.
 
 ## Project status updates workflow
 
