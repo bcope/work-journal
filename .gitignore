@@ -1,23 +1,37 @@
 # Python-generated files
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+*.egg
 
 # Virtual environments
-.venv
+.venv/
+venv/
+env/
 
 # Dev tool caches
 .mypy_cache/
 .pytest_cache/
-.coverage
-htmlcov/
 .ruff_cache/
+.uv_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # OS
 .DS_Store
+Thumbs.db
 
 # Environment variables
 .env
@@ -25,35 +39,28 @@ htmlcov/
 # Local Claude Code state (per-machine)
 .claude/settings.local.json
 .claude/worktrees/
-
-# Local saved Claude Code session dialogues
 docs/dialogues/
 
-# Generated data files - Jira JSON exports (contain PII)
-work/sprint-notes/*/jira/
-
-# Generated data files - enrichment output (contain internal URLs, emails, attendee lists)
-work/sprint-notes/*/email/
+# Generated data under work/ — most contain PII (Jira exports, emails,
+# calendar entries, Google Doc content) or are large/transient. The
+# per-directory rules guarantee no file slips through regardless of extension;
+# the catch-all covers ad-hoc generated files. Review carefully and use
+# `git add -f` for intentional exceptions.
 work/sprint-notes/*/calendar/
-work/sprint-notes/*/google-docs/
-work/sprint-notes/*/prior-sprint/
-work/sprint-notes/*/enrichment-summary.md
+work/sprint-notes/*/claude-code/history-excerpt.jsonl
+work/sprint-notes/*/email/
 work/sprint-notes/*/git/
 work/sprint-notes/*/github/
-
-# Generated data files - Claude Code raw history
-work/sprint-notes/*/claude-code/history-excerpt.jsonl
-
-# Progress brief Jira exports (contain PII)
+work/sprint-notes/*/google-docs/
+work/sprint-notes/*/jira/
+work/sprint-notes/*/prior-sprint/
 work/progress-briefs/*/jira-issues/
+work/**/*.html
+work/**/*.json
+work/**/*.md
+work/**/*.pdf
+work/**/*.yaml
+!work/sprint-notes/README.md
 
 # One-off data files
 events-mentioning-ai.json
-
-# TEMP - DON'T COMMIT THIS
-work/**/**.gitkeep
-work/**/**.json
-work/**/**.md
-work/**/**.pdf
-work/**/**.yaml
-docs/plans/*.md
