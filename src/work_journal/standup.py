@@ -81,13 +81,32 @@ def _warn(warnings: list[str], msg: str) -> None:
     print(f"Warning: {msg}", file=sys.stderr)
 
 
-def query_jira(jql: str, warnings: list[str], label: str = "Jira query") -> list[dict]:
+def query_jira(
+    jql: str,
+    warnings: list[str],
+    label: str = "Jira query",
+    fields: list[str] | None = None,
+) -> list[dict]:
     """Run a Jira query, return parsed issues."""
     try:
-        return search_issues(jql)
+        return search_issues(jql, fields=fields)
     except Exception as e:
         _warn(warnings, f"{label} failed: {e}")
         return []
+
+
+def completion_date(issue: dict) -> str | None:
+    """Return the YYYY-MM-DD an issue entered its current (Done) status category.
+
+    Uses `statuscategorychangedate` (set when the issue moved into Done),
+    falling back to `resolutiondate`. Returns None if neither is present.
+
+    This is the signal for "actually completed", as opposed to `updated`, which
+    bumps on any field change (automation touches, comments, label edits).
+    """
+    fields = issue.get("fields", {})
+    raw = fields.get("statuscategorychangedate") or fields.get("resolutiondate")
+    return raw[:10] if raw else None
 
 
 def query_git_log(since: str, until: str, warnings: list[str]) -> str:
@@ -220,7 +239,13 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
     data: dict = {
         "yesterday": yesterday_str,
         "today": today_str,
-        "completed": {"jira": [], "prs": [], "closed_prs": [], "commits": ""},
+        "completed": {
+            "jira": [],
+            "recently_closed": [],
+            "prs": [],
+            "closed_prs": [],
+            "commits": "",
+        },
         "work_logged": {"jira": []},
         "in_progress": {"jira": [], "prs": []},
         "status_mismatch": {"jira": []},
@@ -236,7 +261,22 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
         ' AND updated < "{today}" AND statusCategory = Done',
     )
     completed_jql = template_jql(completed_jql_template, variables)
-    data["completed"]["jira"] = query_jira(completed_jql, warnings, "Completed yesterday (Jira)")
+    completed_issues = query_jira(
+        completed_jql,
+        warnings,
+        "Completed yesterday (Jira)",
+        fields=["summary", "status", "statuscategorychangedate", "resolutiondate"],
+    )
+    # The query keys off `updated`, a broad superset that bumps on any field
+    # change. Split by when the issue actually entered Done: transitions within
+    # [yesterday, today) are genuine completions; the rest were Done earlier and
+    # merely touched yesterday (e.g. by automation).
+    for issue in completed_issues:
+        changed = completion_date(issue)
+        if changed is not None and not (yesterday_str <= changed < today_str):
+            data["completed"]["recently_closed"].append(issue)
+        else:
+            data["completed"]["jira"].append(issue)
 
     # --- Yesterday: merged PRs ---
     try:
@@ -308,8 +348,13 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
     return data
 
 
-def format_jira_issue(issue: dict, project_names: dict) -> str:
-    """Format a single Jira issue as a markdown bullet."""
+def format_jira_issue(issue: dict, project_names: dict, show_completion_date: bool = False) -> str:
+    """Format a single Jira issue as a markdown bullet.
+
+    When show_completion_date is set, the date the issue entered Done is appended
+    after the status (e.g. "— Closed 2026-05-29"), making it clear the issue was
+    not completed yesterday.
+    """
     key = issue.get("key", "???")
     project_key = key.split("-")[0] if "-" in key else ""
     project_label = project_names.get(project_key, project_key)
@@ -322,7 +367,12 @@ def format_jira_issue(issue: dict, project_names: dict) -> str:
         parts.append(f"({project_label})")
     parts.append(summary)
     if status:
-        parts.append(f"— {status}")
+        status_part = f"— {status}"
+        if show_completion_date:
+            changed = completion_date(issue)
+            if changed:
+                status_part += f" {changed}"
+        parts.append(status_part)
 
     return "- " + " ".join(parts)
 
@@ -398,6 +448,16 @@ def format_markdown(data: dict, project_names: dict) -> str:
             lines.append(format_jira_issue(issue, project_names))
         lines.append("")
 
+    # Done earlier, only touched yesterday (e.g. by automation) — surfaced for
+    # context but kept out of the genuine "completed yesterday" list.
+    recently_closed = data["completed"].get("recently_closed", [])
+    if recently_closed:
+        lines.append("### Recently closed (activity yesterday)")
+        lines.append("")
+        for issue in recently_closed:
+            lines.append(format_jira_issue(issue, project_names, show_completion_date=True))
+        lines.append("")
+
     # Work logged on issues (not yet done)
     work_logged_jira = data.get("work_logged", {}).get("jira", [])
     if work_logged_jira:
@@ -439,6 +499,7 @@ def format_markdown(data: dict, project_names: dict) -> str:
     # Check if yesterday section is empty
     has_yesterday = (
         completed_jira
+        or recently_closed
         or work_logged_jira
         or merged_lines
         or closed_lines

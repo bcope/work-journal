@@ -6,6 +6,12 @@ queries:
   # Leadership). They are only meaningful via worklogs or sprint injection — a status
   # transition on one is bookkeeping, not work done. Excluded from completed/in-progress/blocked.
   completed_yesterday:
+    # Keys off `updated`, which bumps on ANY field change (automation touches,
+    # comments, label edits) — so this is a deliberately broad superset. The
+    # script splits the results by `statuscategorychangedate`: issues that
+    # actually entered Done within [yesterday, today) are genuine completions;
+    # the rest (Done earlier, merely touched yesterday) are surfaced separately
+    # under "Recently closed (activity yesterday)".
     jql: 'assignee = {account_id} AND updated >= "{yesterday}" AND updated < "{today}" AND statusCategory = Done AND issuetype != "Time Tracking" AND filter != 15385'
   in_progress:
     # Exclude In Progress Epics unless they are in the active sprint OR the user
