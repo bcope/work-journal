@@ -38,6 +38,7 @@ After reading the script output, enrich with live context.
 
 Present the final stand-up notes to the user. Apply light editorial polish:
 
+- **Dates and weekdays:** The script header emits each date with its weekday already computed (e.g. `Wednesday, 2026-06-10`). Use those labels verbatim. Never infer or compute the day of week yourself — if you ever need a weekday the script didn't supply, run `date` to get it.
 - Group related Jira issues and PRs that are part of the same effort
 - Fold today's calendar into "What I'm doing today": if there are relevant meetings, add a brief note (e.g., "Also: Sprint planning at 2pm"); if there are none worth flagging, no line is needed
 - Mirror the script's section structure. The script emits, in order: **What I did yesterday** (with subsections as data exists: Jira, Recently closed (activity yesterday), Jira (work logged, not closed), Pull requests (merged), Pull requests (closed, not merged), Commits, Claude Code), **What I'm doing today** (Jira, Open PRs), **Injected into sprint** (only when there are injected issues), **Status check (In Progress, not in active sprint)**, and **Blockers**. A "Data collection warnings" section may also appear if a collection step failed — surface those to the user rather than putting them in the Slack-ready notes. Keep the Slack-ready version concise; drop empty sections.

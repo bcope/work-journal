@@ -430,13 +430,23 @@ def format_claude_summary(claude_data: dict | None) -> list[str]:
     return lines
 
 
+def with_weekday(date_str: str) -> str:
+    """Return an ISO date string prefixed with its weekday, e.g.
+    "Wednesday, 2026-06-10". The weekday is computed from the date, never
+    inferred, so downstream readers (including the standup skill) can copy it
+    verbatim instead of guessing the day of week."""
+    return f"{date.fromisoformat(date_str).strftime('%A')}, {date_str}"
+
+
 def format_markdown(data: dict, project_names: dict) -> str:
     """Format collected data as markdown stand-up notes."""
     yesterday_str = data["yesterday"]
     today_str = data["today"]
+    yesterday_label = with_weekday(yesterday_str)
+    today_label = with_weekday(today_str)
 
-    lines = [f"# Stand-up — {today_str}", ""]
-    lines.append(f"## What I did yesterday ({yesterday_str})")
+    lines = [f"# Stand-up — {today_label}", ""]
+    lines.append(f"## What I did yesterday ({yesterday_label})")
     lines.append("")
 
     # Jira
