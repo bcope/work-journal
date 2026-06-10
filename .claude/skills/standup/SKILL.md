@@ -19,10 +19,13 @@ Run the collection script:
 uv run python3 src/work_journal/standup.py
 ```
 
-If the user specifies a particular "yesterday" date, pass it:
+By default the script reports on everything since the last working day (the
+most recent prior weekday). If the user mentions a gap the script can't infer —
+returning from PTO, a holiday, or any multi-day absence — pass an explicit start
+date so that work is captured:
 
 ```bash
-uv run python3 src/work_journal/standup.py --yesterday YYYY-MM-DD
+uv run python3 src/work_journal/standup.py --since YYYY-MM-DD
 ```
 
 Read the markdown output from stdout. The script also saves a copy to `work/standup/{today}.md` and prints the path to stderr — reference that file if you need to point the user at the saved notes (e.g. for the full Claude Code breakdown).
@@ -41,8 +44,8 @@ Present the final stand-up notes to the user. Apply light editorial polish:
 - **Dates and weekdays:** The script header emits each date with its weekday already computed (e.g. `Wednesday, 2026-06-10`). Use those labels verbatim. Never infer or compute the day of week yourself — if you ever need a weekday the script didn't supply, run `date` to get it.
 - Group related Jira issues and PRs that are part of the same effort
 - Fold today's calendar into "What I'm doing today": if there are relevant meetings, add a brief note (e.g., "Also: Sprint planning at 2pm"); if there are none worth flagging, no line is needed
-- Mirror the script's section structure. The script emits, in order: **What I did yesterday** (with subsections as data exists: Jira, Recently closed (activity yesterday), Jira (work logged, not closed), Pull requests (merged), Pull requests (closed, not merged), Commits, Claude Code), **What I'm doing today** (Jira, Open PRs), **Injected into sprint** (only when there are injected issues), **Status check (In Progress, not in active sprint)**, and **Blockers**. A "Data collection warnings" section may also appear if a collection step failed — surface those to the user rather than putting them in the Slack-ready notes. Keep the Slack-ready version concise; drop empty sections.
-- **Recently closed (activity yesterday):** The script lists these separately from yesterday's genuine completions — they reached Done earlier and were only touched yesterday (e.g. by automation), so each shows its actual close date. Don't present them as work done yesterday. Mention them only if relevant (e.g. a stakeholder marked something Accepted), otherwise it's fine to omit them from the Slack-ready notes.
+- Mirror the script's section structure. The script emits, in order: **What I did since the last working day** (with subsections as data exists: Jira, Recently closed (recent activity), Jira (work logged, not closed), Pull requests (merged), Pull requests (closed, not merged), Commits, Claude Code), **What I'm doing today** (Jira, Open PRs), **Injected into sprint** (only when there are injected issues), **Status check (In Progress, not in active sprint)**, and **Blockers**. A "Data collection warnings" section may also appear if a collection step failed — surface those to the user rather than putting them in the Slack-ready notes. Keep the Slack-ready version concise; drop empty sections.
+- **Recently closed (recent activity):** The script lists these separately from genuine completions in the window — they reached Done earlier and were only touched recently (e.g. by automation), so each shows its actual close date. Don't present them as work done in this window. Mention them only if relevant (e.g. a stakeholder marked something Accepted), otherwise it's fine to omit them from the Slack-ready notes.
 - **Claude Code section:** Show the full per-repo breakdown for ALL repos. The script emits a totals line (`N sessions, Xh Ym thinking, T turns, U user inputs`) followed by a `Repo | Sessions | Thinking | User inputs` table sorted by session count descending. Keep that totals-line-plus-table format and the "user inputs" wording. Never truncate or summarize into "and others."
 
 The output should be ready to copy into Slack or read aloud in a stand-up meeting. Keep it concise — aim for quick readability, not exhaustive detail.
@@ -50,4 +53,4 @@ The output should be ready to copy into Slack or read aloud in a stand-up meetin
 ## Notes
 
 - The script reads config from `config/standup.yaml` and `config/shared.yaml` (Jira account ID, GitHub org, git settings)
-- On Mondays, "yesterday" automatically refers to the previous Friday
+- The reporting window runs from the last working day (the most recent prior weekday) through today, so a Monday run covers the previous Friday plus the weekend. Weekends are skipped automatically; pass `--since` for holidays or PTO.

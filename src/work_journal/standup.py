@@ -1,12 +1,12 @@
 """Generate daily stand-up notes from Jira, GitHub, and git data.
 
 Reads config from config/standup.yaml and config/shared.yaml and queries each source
-for yesterday's completed work, today's in-progress work, and blockers. Outputs
-markdown (default) or JSON to stdout.
+for work done since the last working day, today's in-progress work, and blockers.
+Outputs markdown (default) or JSON to stdout.
 
 Usage:
     uv run python3 src/work_journal/standup.py
-    uv run python3 src/work_journal/standup.py --yesterday 2026-03-03
+    uv run python3 src/work_journal/standup.py --since 2026-03-03
     uv run python3 src/work_journal/standup.py --json
 """
 
@@ -38,19 +38,22 @@ from work_journal.jira.query_sprint_info import DEFAULT_BOARD_ID, _make_session,
 from work_journal.paths import STANDUP_DIR
 
 
-def resolve_dates(yesterday_override: str | None) -> tuple[date, date]:
-    """Return (yesterday, today) dates, handling weekends.
+def resolve_dates(since_override: str | None) -> tuple[date, date]:
+    """Return (since, today): the reporting-window start and today's date.
 
-    If today is Monday and no override is given, yesterday defaults to Friday.
+    `since` is the last working day before today — the most recent prior weekday
+    (Saturday and Sunday are skipped). On a Monday this is the previous Friday,
+    so the window [since, today) captures Friday plus the weekend. Weekends are
+    the only gap handled automatically; for holidays or PTO, pass --since
+    explicitly to widen the window.
     """
     today = date.today()
-    if yesterday_override:
-        yesterday = date.fromisoformat(yesterday_override)
-    elif today.weekday() == 0:  # Monday
-        yesterday = today - timedelta(days=3)  # Friday
-    else:
-        yesterday = today - timedelta(days=1)
-    return yesterday, today
+    if since_override:
+        return date.fromisoformat(since_override), today
+    since = today - timedelta(days=1)
+    while since.weekday() >= 5:  # Saturday=5, Sunday=6
+        since -= timedelta(days=1)
+    return since, today
 
 
 def template_jql(jql_template: str, variables: dict) -> str:
@@ -135,7 +138,7 @@ def query_git_log(since: str, until: str, warnings: list[str]) -> str:
 def collect_claude_activity(
     config: dict, yesterday: date, today: date, warnings: list[str]
 ) -> dict | None:
-    """Collect Claude Code activity for yesterday's sessions.
+    """Collect Claude Code activity for sessions since the last working day.
 
     Returns per-repo metrics and aggregate totals, or None if no sessions found.
     """
@@ -446,7 +449,7 @@ def format_markdown(data: dict, project_names: dict) -> str:
     today_label = with_weekday(today_str)
 
     lines = [f"# Stand-up — {today_label}", ""]
-    lines.append(f"## What I did yesterday ({yesterday_label})")
+    lines.append(f"## What I did since the last working day ({yesterday_label})")
     lines.append("")
 
     # Jira
@@ -462,7 +465,7 @@ def format_markdown(data: dict, project_names: dict) -> str:
     # context but kept out of the genuine "completed yesterday" list.
     recently_closed = data["completed"].get("recently_closed", [])
     if recently_closed:
-        lines.append("### Recently closed (activity yesterday)")
+        lines.append("### Recently closed (recent activity)")
         lines.append("")
         for issue in recently_closed:
             lines.append(format_jira_issue(issue, project_names, show_completion_date=True))
@@ -605,8 +608,9 @@ def main():
         description="Generate daily stand-up notes from Jira, GitHub, and git.",
     )
     parser.add_argument(
-        "--yesterday",
-        help="Override the 'yesterday' date (YYYY-MM-DD). Default: previous weekday.",
+        "--since",
+        help="Override the reporting-window start (YYYY-MM-DD). "
+        "Default: last working day. Pass an earlier date to cover holidays/PTO.",
     )
     parser.add_argument(
         "--json",
@@ -619,9 +623,9 @@ def main():
 
     standup_config = load_standup_config()
     shared_config = load_shared_config()
-    yesterday, today = resolve_dates(args.yesterday)
+    yesterday, today = resolve_dates(args.since)
 
-    print(f"Collecting stand-up data (yesterday={yesterday}, today={today})...", file=sys.stderr)
+    print(f"Collecting stand-up data (since={yesterday}, today={today})...", file=sys.stderr)
 
     data = collect_data(standup_config, yesterday, today)
 

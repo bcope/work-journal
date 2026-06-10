@@ -1,6 +1,25 @@
 """Tests for src/work_journal/standup.py."""
 
-from work_journal.standup import completion_date, format_jira_issue, with_weekday
+from datetime import date
+
+import work_journal.standup as standup
+from work_journal.standup import (
+    completion_date,
+    format_jira_issue,
+    resolve_dates,
+    with_weekday,
+)
+
+
+def _patch_today(monkeypatch, today: date) -> None:
+    """Pin date.today() inside the standup module to a fixed date."""
+
+    class _FixedDate(date):
+        @classmethod
+        def today(cls):
+            return today
+
+    monkeypatch.setattr(standup, "date", _FixedDate)
 
 
 def _make_completed_issue(
@@ -99,3 +118,31 @@ def test_format_jira_issue_omits_date_by_default() -> None:
 def test_with_weekday_computes_correct_day() -> None:
     assert with_weekday("2026-06-10") == "Wednesday, 2026-06-10"
     assert with_weekday("2026-06-09") == "Tuesday, 2026-06-09"
+
+
+def test_resolve_dates_weekday_uses_prior_day(monkeypatch) -> None:
+    # Tuesday -> last working day is Monday.
+    _patch_today(monkeypatch, date(2026, 6, 9))
+    since, today = resolve_dates(None)
+    assert (since, today) == (date(2026, 6, 8), date(2026, 6, 9))
+
+
+def test_resolve_dates_monday_skips_back_to_friday(monkeypatch) -> None:
+    # Monday -> last working day is the previous Friday; window spans the weekend.
+    _patch_today(monkeypatch, date(2026, 6, 8))
+    since, today = resolve_dates(None)
+    assert (since, today) == (date(2026, 6, 5), date(2026, 6, 8))
+
+
+def test_resolve_dates_weekend_run_skips_to_friday(monkeypatch) -> None:
+    # Run on Sunday -> Saturday is skipped, last working day is Friday.
+    _patch_today(monkeypatch, date(2026, 6, 7))
+    since, today = resolve_dates(None)
+    assert (since, today) == (date(2026, 6, 5), date(2026, 6, 7))
+
+
+def test_resolve_dates_override_is_verbatim(monkeypatch) -> None:
+    # An explicit --since wins regardless of weekday (e.g. returning from PTO).
+    _patch_today(monkeypatch, date(2026, 6, 10))
+    since, today = resolve_dates("2026-06-01")
+    assert (since, today) == (date(2026, 6, 1), date(2026, 6, 10))

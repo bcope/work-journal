@@ -28,7 +28,10 @@ queries:
     # Epics and Time Tracking issues are excluded — epics legitimately span sprints.
     jql: 'assignee = {account_id} AND statusCategory = "In Progress" AND issuetype != "Time Tracking" AND issuetype != Epic AND sprint IS NOT EMPTY AND sprint != {sprint_id} AND filter != 15385'
   work_logged_yesterday:
-    jql: 'worklogAuthor = {account_id} AND worklogDate = "{yesterday}" AND filter != 15385'
+    # Range, not a single day, so worklogs entered over a weekend are captured
+    # when the last working day is the Friday before. {yesterday} is the
+    # reporting-window start (the last working day).
+    jql: 'worklogAuthor = {account_id} AND worklogDate >= "{yesterday}" AND worklogDate < "{today}" AND filter != 15385'
   blocked:
     jql: 'assignee = {account_id} and filter = 15541 and sprint = {sprint_id} and statusCategory != done AND issuetype != "Time Tracking" AND filter != 15385'
   injected:
