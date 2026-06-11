@@ -64,3 +64,6 @@ work/**/*.yaml
 
 # One-off data files
 events-mentioning-ai.json
+docs/process/dialogues/
+docs/process/reports/
+docs/process/inbox/
