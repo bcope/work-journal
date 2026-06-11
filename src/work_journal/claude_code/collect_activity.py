@@ -25,6 +25,7 @@ import sys
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, TypedDict
 
 DEFAULT_HISTORY_PATH = os.path.expanduser(
     os.environ.get("CLAUDE_HISTORY_PATH", "~/.claude/history.jsonl")
@@ -69,7 +70,7 @@ def load_history(
     start_date: str,
     end_date: str,
     work_dirs: list[str],
-) -> dict[str, list[dict]]:
+) -> dict[str, dict]:
     """Load history.jsonl and return work sessions grouped by session ID.
 
     Each session ID maps to a list of history entries (there can be multiple
@@ -134,7 +135,24 @@ def _parse_timestamp_ms(timestamp_str) -> int | None:
     return None
 
 
-def analyze_conversation(projects_path: str, project_path: str, session_id: str) -> dict:
+class ConversationMetrics(TypedDict):
+    """Metrics extracted from a single conversation JSONL file."""
+
+    duration_ms: int
+    user_messages: int
+    assistant_messages: int
+    tool_calls: defaultdict[str, int]
+    tool_categories: defaultdict[str, int]
+    first_timestamp: str | None
+    last_timestamp: str | None
+    thinking_time_ms: int
+    turn_count: int
+    documents: dict[str, dict[str, Any]]
+
+
+def analyze_conversation(
+    projects_path: str, project_path: str, session_id: str
+) -> ConversationMetrics:
     """Read a conversation JSONL file and extract all metrics in a single pass.
 
     Returns dict with:
@@ -153,7 +171,7 @@ def analyze_conversation(projects_path: str, project_path: str, session_id: str)
     slug = project_slug(project_path)
     conversation_file = os.path.join(projects_path, slug, f"{session_id}.jsonl")
 
-    result = {
+    result: ConversationMetrics = {
         "duration_ms": 0,
         "user_messages": 0,
         "assistant_messages": 0,
@@ -370,7 +388,7 @@ def format_markdown(
     if agg_categories:
         lines.append("### Tool usage by category")
         lines.append("")
-        for cat in sorted(agg_categories, key=agg_categories.get, reverse=True):
+        for cat in sorted(agg_categories, key=lambda c: agg_categories[c], reverse=True):
             lines.append(f"- **{cat}:** {agg_categories[cat]}")
         lines.append("")
 
@@ -524,10 +542,10 @@ def format_documents_markdown(
         lines.append(f"## Created ({total_created} files)")
         lines.append("")
         for name in sorted(all_created):
-            docs = all_created[name]
+            entries = all_created[name]
             lines.append(f"### {name}")
             lines.append("")
-            for display_path, doc in docs:
+            for display_path, doc in entries:
                 ts = ""
                 if doc["first_op_ts"]:
                     ts_parsed = _parse_timestamp_ms(doc["first_op_ts"])
@@ -545,10 +563,10 @@ def format_documents_markdown(
         lines.append(f"## Modified ({total_modified} files)")
         lines.append("")
         for name in sorted(all_modified):
-            docs = all_modified[name]
+            entries = all_modified[name]
             lines.append(f"### {name}")
             lines.append("")
-            for display_path, doc in docs:
+            for display_path, doc in entries:
                 edits = doc["operations"].count("edit")
                 writes = doc["operations"].count("write")
                 net = doc["edit_net_chars"]

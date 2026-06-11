@@ -26,7 +26,6 @@ jobs:
 
       - name: Type check
         run: uv run mypy src/
-        continue-on-error: true
 
       - name: Test
         run: uv run pytest

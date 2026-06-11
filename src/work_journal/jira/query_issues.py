@@ -108,7 +108,7 @@ def search_issues(
     session = _make_session()
 
     minimal = _paginate_jql(session, jql, max_results=max_results, page_size=page_size)
-    keys = [i.get("key") or i.get("id") for i in minimal if i.get("key") or i.get("id")]
+    keys = [str(i.get("key") or i.get("id")) for i in minimal if i.get("key") or i.get("id")]
     if not keys:
         return []
     return _bulk_fetch(session, keys, fields=fields)

@@ -52,9 +52,14 @@ def list_sprints(
     sprints: list[dict] = []
 
     while True:
+        params: dict[str, str | int] = {
+            "maxResults": page_size,
+            "state": state,
+            "startAt": start_at,
+        }
         resp = session.get(
             f"{AGILE_API}/board/{board_id}/sprint",
-            params={"maxResults": page_size, "state": state, "startAt": start_at},
+            params=params,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -162,6 +167,7 @@ def main():
     session = _make_session()
     indent = 2 if args.pretty else None
 
+    result: dict | list | None
     try:
         if args.sprint_id:
             result = get_sprint(session, args.sprint_id)
