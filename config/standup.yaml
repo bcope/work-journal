@@ -13,6 +13,13 @@ queries:
     # the rest (Done earlier, merely touched yesterday) are surfaced separately
     # under "Recently closed (activity yesterday)".
     jql: 'assignee = {account_id} AND updated >= "{yesterday}" AND updated < "{today}" AND statusCategory = Done AND issuetype != "Time Tracking" AND filter != 15385'
+  completed_today:
+    # Issues that entered Done today — after the lookback window's upper bound
+    # (which is the start of today), so they miss `completed_yesterday`. Keys off
+    # `updated` as a broad superset; the script keeps only those whose Done
+    # transition was today (via statuscategorychangedate), then surfaces them
+    # under "What I'm doing today" labeled with their Done status.
+    jql: 'assignee = {account_id} AND updated >= "{today}" AND statusCategory = Done AND issuetype != "Time Tracking" AND filter != 15385'
   in_progress:
     # Exclude In Progress Epics unless they are in the active sprint OR the user
     # logged work on them during the stand-up period.

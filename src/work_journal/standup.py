@@ -250,6 +250,7 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
             "commits": "",
         },
         "work_logged": {"jira": []},
+        "completed_today": {"jira": []},
         "in_progress": {"jira": [], "prs": []},
         "status_mismatch": {"jira": []},
         "blocked": {"jira": []},
@@ -308,6 +309,23 @@ def collect_data(standup_config: dict, yesterday: date, today: date) -> dict:
         completed_keys = {i.get("key") for i in data["completed"]["jira"]}
         data["work_logged"]["jira"] = [
             i for i in work_logged_issues if i.get("key") not in completed_keys
+        ]
+
+    # --- Today: issues completed today (closed after the lookback window) ---
+    # These entered Done today, so `completed_yesterday` (updated < today) misses
+    # them. Query is a broad superset keyed off `updated`; keep only issues whose
+    # Done transition was actually today, dropping ones merely touched today.
+    completed_today_jql_template = standup_queries.get("completed_today", {}).get("jql", "")
+    if completed_today_jql_template:
+        completed_today_jql = template_jql(completed_today_jql_template, variables)
+        completed_today_issues = query_jira(
+            completed_today_jql,
+            warnings,
+            "Completed today (Jira)",
+            fields=["summary", "status", "statuscategorychangedate", "resolutiondate"],
+        )
+        data["completed_today"]["jira"] = [
+            i for i in completed_today_issues if completion_date(i) == today_str
         ]
 
     # --- Today: in-progress Jira issues ---
@@ -527,6 +545,17 @@ def format_markdown(data: dict, project_names: dict) -> str:
     lines.append("## What I'm doing today")
     lines.append("")
 
+    # Closed today — completed after the lookback window's cutoff (start of
+    # today). Shown here, labeled with their Done status, rather than under
+    # yesterday's completions.
+    completed_today_jira = data.get("completed_today", {}).get("jira", [])
+    if completed_today_jira:
+        lines.append("### Completed today")
+        lines.append("")
+        for issue in completed_today_jira:
+            lines.append(format_jira_issue(issue, project_names))
+        lines.append("")
+
     in_progress_jira = data["in_progress"]["jira"]
     if in_progress_jira:
         lines.append("### Jira")
@@ -555,7 +584,7 @@ def format_markdown(data: dict, project_names: dict) -> str:
             lines.extend(format_github_prs(other_recent, "open"))
             lines.append("")
 
-    has_today = in_progress_jira or has_open_prs
+    has_today = completed_today_jira or in_progress_jira or has_open_prs
     if not has_today:
         lines.append("Nothing tracked.")
         lines.append("")

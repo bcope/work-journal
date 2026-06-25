@@ -93,6 +93,24 @@ def test_partition_monday_window_spans_weekend() -> None:
     assert recently_closed == []
 
 
+def _completed_today(issues: list[dict], today: str) -> list[dict]:
+    """Mirror the completed-today filter in collect_data."""
+    return [i for i in issues if completion_date(i) == today]
+
+
+def test_completed_today_keeps_only_todays_done_transitions() -> None:
+    closed_today = _make_completed_issue(
+        key="TODAY-1", status_category_changed="2026-06-24T10:05:23.783-0400"
+    )
+    touched_today_done_earlier = _make_completed_issue(
+        key="STALE-1", status_category_changed="2026-06-20T11:00:00.000-0400"
+    )
+    no_date = _make_completed_issue(key="UNK-1")  # excluded — can't confirm today
+
+    result = _completed_today([closed_today, touched_today_done_earlier, no_date], "2026-06-24")
+    assert [i["key"] for i in result] == ["TODAY-1"]
+
+
 def test_format_jira_issue_appends_completion_date_when_requested() -> None:
     issue = _make_completed_issue(
         key="COMPLY-723",
