@@ -32,17 +32,17 @@ jira:
 
     non_sprint_completed:
       description: "Issues assigned to user, completed in the date range, never in this sprint"
-      jql: "assignee = {account_id} AND sprint != {sprint_id} AND statusCategory = Done AND resolved >= {start_date} AND resolved <= {end_date} AND filter != 15385"
+      jql: "assignee = {account_id} AND (sprint != {sprint_id} OR sprint IS EMPTY) AND statusCategory = Done AND resolved >= {start_date} AND resolved <= {end_date} AND filter != 15385"
       output: "jira/non-sprint-completed.json"
 
     non_sprint_incomplete:
       description: "Issues assigned to user, updated in the date range, never in this sprint, still open"
-      jql: "assignee = {account_id} AND sprint != {sprint_id} AND statusCategory != Done AND worklogDate >= {start_date} AND worklogDate <= {end_date} AND worklogAuthor = {account_id} AND filter != 15385"
+      jql: "assignee = {account_id} AND (sprint != {sprint_id} OR sprint IS EMPTY) AND statusCategory != Done AND worklogDate >= {start_date} AND worklogDate <= {end_date} AND worklogAuthor = {account_id} AND filter != 15385"
       output: "jira/non-sprint-incomplete.json"
 
     non_assigned_with_worklog:
       description: "Issues not assigned to user, but with worklogs by user in the date range, never in this sprint"
-      jql: "assignee != {account_id} AND sprint != {sprint_id} AND worklogDate >= {start_date} AND worklogDate <= {end_date} AND worklogAuthor = {account_id} AND filter != 15385"
+      jql: "assignee != {account_id} AND (sprint != {sprint_id} OR sprint IS EMPTY) AND worklogDate >= {start_date} AND worklogDate <= {end_date} AND worklogAuthor = {account_id} AND filter != 15385"
       output: "jira/non-sprint-non-assigned-with-worklog.json"
 
 github:
