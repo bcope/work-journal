@@ -1,11 +1,16 @@
 """Tests for src/work_journal/daily_log.py."""
 
+import json
 from datetime import date
+from pathlib import Path
+
+import pytest
 
 from work_journal.daily_log import (
     compute_window,
     extract_completed_sections,
     parse_coverage,
+    snapshot,
 )
 
 STANDUP_HEADER = (
@@ -137,3 +142,64 @@ def test_extract_without_completed_today_section() -> None:
     result = extract_completed_sections(text)
     assert "Completed today" not in result
     assert "BSR-2435" in result
+
+
+def _write_sprint_info(sprint_dir: Path) -> None:
+    jira = sprint_dir / "jira"
+    jira.mkdir(parents=True)
+    (jira / "sprint-info.json").write_text(json.dumps(_sprint_info("2026-07-01", "2026-07-14")))
+    (jira / "prior-sprint-info.json").write_text(
+        json.dumps(_sprint_info("2026-06-12", "2026-06-30", complete="2026-06-30"))
+    )
+
+
+def test_snapshot_copies_window_files(tmp_path: Path) -> None:
+    sprint_dir = tmp_path / "2026-07-A"
+    _write_sprint_info(sprint_dir)
+    notes = tmp_path / "daily-note"
+    notes.mkdir()
+    (notes / "2026-06-30.md").write_text("# 2026-06-30\n\n- close sprint\n")
+    (notes / "2026-07-01.md").write_text("# 2026-07-01\n\n- new sprint\n")
+    (notes / "2026-06-26.md").write_text("# 2026-06-26\n\n- before window\n")
+    standups = tmp_path / "standup"
+    standups.mkdir()
+    (standups / "2026-07-02.md").write_text(
+        "# Stand-up — Thursday, 2026-07-02\n\n"
+        "## What I did since the last working day (Wednesday, 2026-07-01)\n\n"
+        "### Jira\n\n- [X-1] (X) Thing — Closed\n"
+    )
+    (standups / "2026-06-15.md").write_text(
+        "# Stand-up — Monday, 2026-06-15\n\n"
+        "## What I did since the last working day (Friday, 2026-06-12)\n\n"
+        "### Jira\n\n- [X-0] (X) Out of window — Closed\n"
+    )
+
+    summary = snapshot(sprint_dir, notes, standups)
+
+    raw = sprint_dir / "daily-log" / "raw"
+    assert (raw / "daily-notes" / "2026-06-30.md").exists()
+    assert (raw / "daily-notes" / "2026-07-01.md").exists()
+    assert not (raw / "daily-notes" / "2026-06-26.md").exists()
+    assert (raw / "standups" / "2026-07-02.md").exists()
+    assert not (raw / "standups" / "2026-06-15.md").exists()
+    assert "X-1" in (raw / "standups" / "2026-07-02.md").read_text()
+    assert "2026-07-04" in summary  # a no-record weekend day appears
+
+
+def test_snapshot_is_idempotent(tmp_path: Path) -> None:
+    sprint_dir = tmp_path / "2026-07-A"
+    _write_sprint_info(sprint_dir)
+    (tmp_path / "daily-note").mkdir()
+    (tmp_path / "standup").mkdir()
+    stale = sprint_dir / "daily-log" / "raw" / "daily-notes"
+    stale.mkdir(parents=True)
+    (stale / "1999-01-01.md").write_text("stale")
+
+    snapshot(sprint_dir, tmp_path / "daily-note", tmp_path / "standup")
+
+    assert not (stale / "1999-01-01.md").exists()
+
+
+def test_snapshot_requires_sprint_info(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        snapshot(tmp_path / "nope", tmp_path, tmp_path)
