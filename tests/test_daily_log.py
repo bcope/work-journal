@@ -2,7 +2,12 @@
 
 from datetime import date
 
-from work_journal.daily_log import compute_window
+from work_journal.daily_log import compute_window, parse_coverage
+
+STANDUP_HEADER = (
+    "# Stand-up — Thursday, 2026-07-09\n\n"
+    "## What I did since the last working day (Wednesday, 2026-07-08)\n"
+)
 
 
 def _sprint_info(start: str, end: str, complete: str | None = None) -> dict:
@@ -24,3 +29,22 @@ def test_window_starts_on_prior_sprint_close_day() -> None:
 def test_window_falls_back_to_sprint_start_without_prior() -> None:
     sprint = _sprint_info("2026-07-01", "2026-07-14")
     assert compute_window(sprint, None) == (date(2026, 7, 1), date(2026, 7, 14))
+
+
+def test_parse_coverage_reads_since_date_from_header() -> None:
+    assert parse_coverage(STANDUP_HEADER, date(2026, 7, 9)) == (
+        date(2026, 7, 8),
+        date(2026, 7, 9),
+    )
+
+
+def test_parse_coverage_spans_weekend() -> None:
+    text = "## What I did since the last working day (Friday, 2026-07-03)\n"
+    assert parse_coverage(text, date(2026, 7, 6)) == (date(2026, 7, 3), date(2026, 7, 6))
+
+
+def test_parse_coverage_falls_back_when_header_missing() -> None:
+    assert parse_coverage("# Stand-up — malformed\n", date(2026, 7, 9)) == (
+        date(2026, 7, 6),
+        date(2026, 7, 9),
+    )
