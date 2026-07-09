@@ -15,6 +15,18 @@ SINCE_RE = re.compile(
     re.MULTILINE,
 )
 
+WHAT_I_DID_PREFIX = "## What I did since the last working day"
+TOP_SECTION_PREFIXES = (
+    WHAT_I_DID_PREFIX,
+    "## What I'm doing today",
+    "## Injected into sprint",
+    "## Status check",
+    "## Blockers",
+    "## Data collection warnings",
+)
+DROP_SUBSECTIONS = ("### Recently closed (recent activity)", "### Claude Code")
+COMPLETED_TODAY = "### Completed today"
+
 
 def compute_window(sprint_info: dict, prior_sprint_info: dict | None) -> tuple[date, date]:
     """Window from prior sprint's close day (inclusive — sprints close midway
@@ -38,3 +50,39 @@ def parse_coverage(text: str, file_date: date) -> tuple[date, date]:
     if match:
         return date.fromisoformat(match.group(1)), file_date
     return file_date - timedelta(days=3), file_date
+
+
+def extract_completed_sections(text: str) -> str:
+    """Keep only completed-work evidence from a standup markdown file.
+
+    Keeps the title, the 'What I did' section (minus the Recently-closed and
+    Claude Code subsections), and the 'Completed today' subsection. Drops
+    everything else. Boundaries are the exact section literals the standup
+    script emits — the Commits body embeds its own #/## headers, so generic
+    header matching would truncate it.
+    """
+    out: list[str] = []
+    current_top: str | None = None
+    keeping = False
+    for line in text.splitlines():
+        if line.startswith("# Stand-up"):
+            out.append(line)
+            continue
+        top = next((p for p in TOP_SECTION_PREFIXES if line.startswith(p)), None)
+        if top is not None:
+            current_top = top
+            keeping = top == WHAT_I_DID_PREFIX
+            if keeping:
+                out.append(line)
+            continue
+        if current_top == WHAT_I_DID_PREFIX:
+            if line.startswith("### "):
+                keeping = not line.startswith(DROP_SUBSECTIONS)
+            if keeping:
+                out.append(line)
+        elif current_top == "## What I'm doing today":
+            if line.startswith("### "):
+                keeping = line.startswith(COMPLETED_TODAY)
+            if keeping:
+                out.append(line)
+    return "\n".join(out).strip() + "\n"
