@@ -28,6 +28,7 @@ work/                             # Working data and outputs
       raw/                        # Raw HTML (manual copy)
       parsed/                     # Classified JSON (from parse script)
       cleaned/                    # Cleaned markdown (from /clean-insights skill)
+    daily-note/                   # Manual daily notes, one file per day
   sprint-notes/                   # Biweekly sprint notes (see work/sprint-notes/README.md)
     config.yaml                   # Repo-level collection config
     template-dir-sprint-name/     # Template for new sprints
@@ -59,10 +60,20 @@ uv run python3 src/work_journal/insights/cli.py 2026-02-B
 # 3. Collect data
 uv run python3 src/work_journal/collect.py 2026-02-B
 
-# 4. Add manual context (Slack links, meeting notes, etc.)
+# 4. Snapshot daily log (review the printed coverage summary)
+uv run python3 src/work_journal/daily_log.py 2026-02-B
+
+# 5. Merge daily log via Claude skill, then optionally edit
+#    work/sprint-notes/2026-02-B/daily-log/merged-edited.md
+#    /merge-daily-log 2026-02-B
+
+# 6. Add manual context (Slack links, meeting notes, etc.)
 #    Edit work/sprint-notes/2026-02-B/manual-notes.md
 
-# 5. Draft sprint notes via Claude skill
+# 7. Enrich via MCP (required — gates on the merged daily log)
+#    /enrich-sprint-data 2026-02-B
+
+# 8. Draft sprint notes via Claude skill
 #    /draft-sprint-notes 2026-02-B
 ```
 

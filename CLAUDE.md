@@ -50,13 +50,15 @@ The Jira API credentials (`JIRA_USER` / `JIRA_API_TOKEN`) authenticate as a gene
 - `src/work_journal/gcalendar/` — Google Calendar event queries
 - `src/work_journal/claude_code/` — Claude Code activity collection
 - `src/work_journal/insights/` — Claude Code insights report parsing and classification
+- `src/work_journal/daily_log.py` — Snapshots daily notes and standup completed-work extracts into a sprint's `daily-log/raw/`
 - `src/work_journal/collect_project_status.py` — Project status data collection (GitHub, Jira, Calendar)
 - `src/work_journal/collect_progress_brief.py` — Quarterly rollup collection (aggregates sprint data for progress briefs)
 - `src/work_journal/quarters.py` — Quarter-sprint mapping utilities
 - `tests/` — Test suite
 - `work/sprint-notes/` — Sprint note data and drafts. Each sprint is a subdirectory (e.g., `2026-02-A/`).
 - `work/sprint-notes/{sprint}/sprint.yaml` — Sprint-level config (just the `sprint_name` field)
-- `work/shared/` — Cross-process inputs (insights reports)
+- `work/shared/` — Cross-process inputs (insights reports, daily notes)
+- `work/shared/daily-note/` — Manual daily notes, one file per day (`{YYYY-MM-DD}.md`)
 - `work/shared/insights/raw/` — Raw HTML from Claude Code `/insights` command (any filename)
 - `work/shared/insights/parsed/` — Classified JSON, named `{start}-to-{end}.json` (date range from the report)
 - `work/shared/insights/cleaned/` — Final cleaned markdown, named `{start}-to-{end}.md`. Sprint and progress brief draft skills find files whose date range overlaps the sprint/quarter and treat them as pattern-level commentary, not accomplishment evidence.
@@ -90,14 +92,16 @@ The canonical source for this mapping is `config/shared.yaml` under `project_nam
    c. Parse: `uv run python3 src/work_journal/insights/cli.py <raw-filename>` (writes `parsed/{start}-to-{end}.json`)
    d. Clean: `/clean-insights {start}-to-{end}` (writes `cleaned/{start}-to-{end}.md`)
 3. Collect data: `uv run python3 src/work_journal/collect.py {sprint}`
-4. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
-5. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
-6. Draft via skill: `/draft-sprint-notes {sprint}`
-7. Upload to Google Docs: `/upload-sprint-notes {sprint}`
+4. Snapshot daily log: `uv run python3 src/work_journal/daily_log.py {sprint}` (review the printed coverage summary)
+5. Merge: `/merge-daily-log {sprint}`, then optionally edit `work/sprint-notes/{sprint}/daily-log/merged-edited.md`
+6. Optionally edit `work/sprint-notes/{sprint}/manual-notes.md`
+7. Enrich via MCP: `/enrich-sprint-data {sprint}` (Gmail, Calendar, Google Docs, Jira comments)
+8. Draft via skill: `/draft-sprint-notes {sprint}`
+9. Upload to Google Docs: `/upload-sprint-notes {sprint}`
 
-Steps 4 and 5 are optional but significantly improve draft quality. Step 5 saves its output to files, so re-drafting (step 6) doesn't re-fetch MCP data.
+Step 6 (`manual-notes.md` editing) is optional but improves draft quality. Step 7 (enrichment) is required — it gates on the merged daily log and saves its output to files, so re-drafting (step 8) doesn't re-fetch MCP data.
 
-Step 6 also produces `annotations.yaml` (business value tags per accomplishment) and appends impact metrics to the quarter's `impact-metrics.yaml`. These feed the progress brief pipeline.
+Step 8 also produces `annotations.yaml` (business value tags per accomplishment) and appends impact metrics to the quarter's `impact-metrics.yaml`. These feed the progress brief pipeline.
 
 ## Progress brief workflow
 
