@@ -14,6 +14,18 @@ Gather qualitative context that deterministic scripts cannot capture -- email de
 
 ## Process
 
+### Phase 0: Gate on the merged daily log
+
+Check that `work/sprint-notes/{sprint}/daily-log/merged-edited.md` exists. If it is missing, stop and tell the user to run:
+
+```bash
+uv run python3 src/work_journal/daily_log.py {sprint}
+```
+
+then `/merge-daily-log {sprint}`, and re-invoke this skill afterward.
+
+**Exemption:** sprints before 2026-07-A predate daily notes — proceed without the file.
+
 ### Phase 1: Build context from collected data
 
 Read these files from `work/sprint-notes/{sprint}/` to build a search context:
@@ -38,7 +50,8 @@ Read these files from `work/sprint-notes/{sprint}/` to build a search context:
 
 3. **`github/prs.md`** -- Extract repo names and PR titles (additional search context). Optional.
 4. **`manual-notes.md`** -- Extract any names, topics, or links the user flagged. Optional.
-5. **`config/shared.yaml`** -- Read `project_names` for mapping keys to readable names. Use `OWNER_EMAIL` env var for email search context.
+5. **`daily-log/merged-edited.md`** -- Extract names, topics, and links worth targeting in Gmail/Docs/Calendar searches (required unless the sprint predates 2026-07-A; see Phase 0).
+6. **`config/shared.yaml`** -- Read `project_names` for mapping keys to readable names. Use `OWNER_EMAIL` env var for email search context.
 
 Build a structured context with:
 

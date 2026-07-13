@@ -42,7 +42,10 @@ Read the following files from `work/sprint-notes/{sprint}/`:
    - `git/between-sprints-commit-log.md` -- Commits in the gap. Optional.
    - `claude-code/between-sprints-sessions.md` -- Claude Code sessions in the gap. Optional.
 6. **`manual-notes.md`** -- User-curated notes (Slack links, email summaries, meeting notes). Optional.
-7. **Claude Code insights** -- one or more cleaned files in
+7. **`daily-log/merged-edited.md`** -- **Required.** The merged daily log: the primary record of what actually happened per day. If it is missing, stop and tell the user to run `uv run python3 src/work_journal/daily_log.py {sprint}` and then `/merge-daily-log {sprint}` first. **Exemption:** sprints before 2026-07-A predate daily notes — proceed without it.
+
+   Other sources (Jira, GitHub, git, Claude Code) corroborate the daily log and add links and metrics. When sources conflict, the daily log wins and the disagreement gets a `TODO:` marker in the draft. Never read `merged-raw.md` — it exists only for diffing against the edited copy.
+8. **Claude Code insights** -- one or more cleaned files in
    `work/shared/insights/cleaned/` whose date range overlaps the sprint period.
    Files are named `{start}-to-{end}.md`. Find candidates by reading the
    sprint date range from `jira/sprint-info.json` and listing cleaned files
@@ -80,7 +83,7 @@ If `/enrich-sprint-data` was run, read the enrichment output files:
 4. **`jira/issue-details.md`** -- Comments and deeper context on key issues. Impact metrics, decision rationale, stakeholder context.
 5. **`prior-sprint/continuity.md`** -- Carryover themes, incomplete work from the prior sprint, and prior metrics useful for showing progress over time.
 
-If enrichment files don't exist, proceed with available data. The draft will have more `TODO` markers but is still useful.
+If enrichment files don't exist, pause and ask the user whether to proceed without enrichment. Recommend running `/enrich-sprint-data {sprint}` first — the draft is significantly better with it.
 
 **Do not** read `google-docs/modified-not-created.md`. That file is an audit list of documents touched during the sprint window but created earlier — most of which represent prior work whose `modifiedTime` was bumped by a permission tweak, an open-with-autosave, or a collaborator's edit. The user reviews that list manually and folds any genuine sprint-period work into `doc-summaries.md` before drafting. If `doc-summaries.md` is missing or thin and you need more Google Docs context, surface that as a TODO rather than pulling from `modified-not-created.md`.
 
@@ -263,6 +266,12 @@ work/sprint-notes/
       modified-not-created.md                   # Audit list of touched-but-not-created docs (NOT loaded by this skill)
     prior-sprint/
       continuity.md                             # Prior sprint carryover (from /enrich-sprint-data)
+    daily-log/
+      raw/
+        daily-notes/                            # Snapshotted daily notes (from daily_log.py)
+        standups/                               # Standup completed-work extracts (from daily_log.py)
+      merged-raw.md                             # Merge output; never hand-edited, never read here
+      merged-edited.md                          # Editable merged log; required input for this skill
     manual-notes.md                             # User-curated
     enrichment-summary.md                       # Enrichment quality/coverage (from /enrich-sprint-data)
     draft.md                                    # Output of this skill
