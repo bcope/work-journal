@@ -3,8 +3,10 @@
 import json
 
 from work_journal.claude_code.collect_activity import (
+    _format_count,
     aggregate_tokens_by_day,
     analyze_conversation,
+    format_markdown,
 )
 
 
@@ -98,3 +100,47 @@ def test_aggregate_tokens_by_day_merges_sessions():
             "claude-haiku-4-5": _usage(1),
         }
     }
+
+
+def test_format_count_suffixes():
+    assert _format_count(1_500_000_000) == "1.5B"
+    assert _format_count(4_224_400) == "4.2M"
+    assert _format_count(361_000) == "361.0K"
+    assert _format_count(532) == "532"
+
+
+def test_format_markdown_token_line():
+    session = {
+        "session_id": "s1",
+        "timestamp": 1750000000000,
+        "display": "hello",
+        "metrics": {
+            "duration_ms": 0,
+            "user_messages": 1,
+            "assistant_messages": 1,
+            "tool_calls": {},
+            "tool_categories": {},
+            "first_timestamp": None,
+            "last_timestamp": None,
+            "thinking_time_ms": 60000,
+            "turn_count": 1,
+            "documents": {},
+            "tokens": {
+                "2026-06-15": {
+                    "claude-opus-4-8": {
+                        "input_tokens": 1000,
+                        "output_tokens": 2000,
+                        "cache_read_input_tokens": 3000,
+                        "cache_creation_input_tokens": 4000,
+                    }
+                }
+            },
+        },
+    }
+    md = format_markdown({"/Users/x/git/a": [session]}, "2026-06-12", "2026-06-30")
+    assert "- **Token usage:** 1.0K in / 2.0K out / 3.0K cache read / 4.0K cache write" in md
+
+
+def test_format_markdown_no_token_line_when_absent():
+    md = format_markdown({}, "2026-06-12", "2026-06-30")
+    assert "Token usage" not in md

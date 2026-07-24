@@ -382,6 +382,13 @@ def _format_chars(chars: int) -> str:
     return str(chars)
 
 
+def _format_count(n: int) -> str:
+    """Format a large count with K/M/B suffix."""
+    if n >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.1f}B"
+    return _format_chars(n)
+
+
 def format_markdown(
     sessions_by_project: dict[str, list[dict]],
     start_date: str,
@@ -427,6 +434,23 @@ def format_markdown(
     lines.append(f"- **Files created:** {total_created}")
     lines.append(f"- **Files modified:** {total_modified}")
     lines.append(f"- **Total chars written:** {_format_chars(total_write_chars)}")
+    token_totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+    for models in aggregate_tokens_by_day(sessions_by_project).values():
+        for usage in models.values():
+            for field in token_totals:
+                token_totals[field] += usage.get(field, 0)
+    if any(token_totals.values()):
+        lines.append(
+            f"- **Token usage:** {_format_count(token_totals['input_tokens'])} in"
+            f" / {_format_count(token_totals['output_tokens'])} out"
+            f" / {_format_count(token_totals['cache_read_input_tokens'])} cache read"
+            f" / {_format_count(token_totals['cache_creation_input_tokens'])} cache write"
+        )
     lines.append("")
 
     # Aggregate tool categories
