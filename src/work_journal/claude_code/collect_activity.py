@@ -357,6 +357,24 @@ def aggregate_tokens_by_day(
     return days
 
 
+def write_tokens_json(
+    path: Path,
+    sessions_by_project: dict[str, list[dict]],
+    since: str,
+    until: str,
+) -> None:
+    """Write the tokens-by-day artifact for a collection window."""
+    days = aggregate_tokens_by_day(sessions_by_project)
+    payload = {
+        "since": since,
+        "until": until,
+        "days": [{"date": date, "models": days[date]} for date in sorted(days)],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+
+
 def _count_documents(metrics: dict) -> tuple[int, int, int]:
     """Count created files, modified files, and total write chars from doc metrics."""
     created = 0
@@ -709,6 +727,11 @@ def main():
         metavar="PATH",
         help="Write documents-generated markdown to this file",
     )
+    parser.add_argument(
+        "--tokens-output",
+        metavar="PATH",
+        help="Write per-day per-model token usage JSON to this file",
+    )
 
     args = parser.parse_args()
 
@@ -778,6 +801,12 @@ def main():
         with open(docs_path, "w") as f:
             f.write(docs_md)
         print(f"Wrote documents report to {docs_path}", file=sys.stderr)
+
+    # Write token usage artifact if requested
+    if args.tokens_output:
+        tokens_path = Path(args.tokens_output)
+        write_tokens_json(tokens_path, sessions_by_project, args.since, args.until)
+        print(f"Wrote token usage to {tokens_path}", file=sys.stderr)
 
     # Output sessions markdown to stdout
     print(format_markdown(sessions_by_project, args.since, args.until))

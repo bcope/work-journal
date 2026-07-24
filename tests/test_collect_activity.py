@@ -7,6 +7,7 @@ from work_journal.claude_code.collect_activity import (
     aggregate_tokens_by_day,
     analyze_conversation,
     format_markdown,
+    write_tokens_json,
 )
 
 
@@ -144,3 +145,25 @@ def test_format_markdown_token_line():
 def test_format_markdown_no_token_line_when_absent():
     md = format_markdown({}, "2026-06-12", "2026-06-30")
     assert "Token usage" not in md
+
+
+def test_write_tokens_json(tmp_path):
+    sessions_by_project = {
+        "/Users/x/git/a": [
+            {
+                "metrics": {
+                    "tokens": {
+                        "2026-06-16": {"claude-opus-4-8": _usage(2)},
+                        "2026-06-15": {"claude-opus-4-8": _usage(1)},
+                    }
+                }
+            }
+        ]
+    }
+    out = tmp_path / "sub" / "tokens-by-day.json"
+    write_tokens_json(out, sessions_by_project, "2026-06-12", "2026-06-30")
+    data = json.loads(out.read_text())
+    assert data["since"] == "2026-06-12"
+    assert data["until"] == "2026-06-30"
+    assert [d["date"] for d in data["days"]] == ["2026-06-15", "2026-06-16"]
+    assert data["days"][0]["models"] == {"claude-opus-4-8": _usage(1)}
