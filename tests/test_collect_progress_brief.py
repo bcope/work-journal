@@ -1,8 +1,11 @@
 """Tests for collect_progress_brief.py."""
 
+import json
+
 from work_journal.collect_progress_brief import (
     format_char_count,
     format_duration_minutes,
+    load_token_usage,
     parse_char_count,
     parse_claude_code_stats,
     parse_duration_minutes,
@@ -57,6 +60,39 @@ def test_parse_claude_code_stats_sums_both_files(tmp_path):
         "turns": 197,
         "chars_written": 843900,
     }
+
+
+def _usage(n):
+    return {
+        "input_tokens": n,
+        "output_tokens": n,
+        "cache_read_input_tokens": n,
+        "cache_creation_input_tokens": n,
+    }
+
+
+def test_load_token_usage_sums_files_days_models(tmp_path):
+    cc_dir = tmp_path / "claude-code"
+    cc_dir.mkdir()
+    (cc_dir / "tokens-by-day.json").write_text(
+        json.dumps(
+            {
+                "days": [
+                    {"date": "2026-06-15", "models": {"claude-opus-4-8": _usage(10)}},
+                    {"date": "2026-06-16", "models": {"claude-haiku-4-5": _usage(1)}},
+                ]
+            }
+        )
+    )
+    (cc_dir / "between-sprints-tokens-by-day.json").write_text(
+        json.dumps({"days": [{"date": "2026-06-11", "models": {"claude-opus-4-8": _usage(5)}}]})
+    )
+    totals = load_token_usage(tmp_path)
+    assert totals == _usage(16)
+
+
+def test_load_token_usage_missing_files(tmp_path):
+    assert load_token_usage(tmp_path) == _usage(0)
 
 
 def test_parse_claude_code_stats_missing_files(tmp_path):

@@ -174,6 +174,33 @@ def parse_claude_code_stats(sprint_dir: Path) -> dict[str, int]:
     return totals
 
 
+def load_token_usage(sprint_dir: Path) -> dict[str, int]:
+    """Sum token usage across a sprint's tokens-by-day artifacts."""
+    totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+    for filename in (
+        "claude-code/tokens-by-day.json",
+        "claude-code/between-sprints-tokens-by-day.json",
+    ):
+        path = sprint_dir / filename
+        if not path.exists():
+            continue
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        for day in data.get("days", []):
+            for usage in day.get("models", {}).values():
+                for field in totals:
+                    totals[field] += usage.get(field, 0)
+    return totals
+
+
 def count_prs(sprint_dir: Path) -> dict[str, int]:
     """Count authored and reviewed PRs from prs.md files."""
     counts = {"authored": 0, "reviewed": 0}
@@ -235,6 +262,7 @@ def format_rollup(
     cc_thinking_time: str,
     cc_turns: int,
     cc_chars_written: int,
+    cc_tokens: dict[str, int],
     key_docs: list[tuple[str, str]],
     value_category_counts: dict[str, int],
     project_names: dict[str, str],
@@ -298,6 +326,15 @@ def format_rollup(
         lines.append(f"| Claude Code turns | {cc_turns} |")
     if cc_chars_written:
         lines.append(f"| Claude Code chars written | {format_char_count(cc_chars_written)} |")
+    if any(cc_tokens.values()):
+        lines.append(f"| Claude Code tokens (input) | {cc_tokens['input_tokens']:,} |")
+        lines.append(f"| Claude Code tokens (output) | {cc_tokens['output_tokens']:,} |")
+        lines.append(
+            f"| Claude Code tokens (cache read) | {cc_tokens['cache_read_input_tokens']:,} |"
+        )
+        lines.append(
+            f"| Claude Code tokens (cache write) | {cc_tokens['cache_creation_input_tokens']:,} |"
+        )
     total_accomplishments = sum(len(v) for v in accomplishments_by_project.values())
     lines.append(f"| Key accomplishments | {total_accomplishments} |")
     lines.append("")
@@ -406,6 +443,12 @@ def main() -> None:
     jira_totals: dict[str, dict[str, int]] = {}
     pr_totals: dict[str, int] = {"authored": 0, "reviewed": 0}
     cc_totals = {"sessions": 0, "thinking_minutes": 0, "turns": 0, "chars_written": 0}
+    cc_token_totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
     key_docs: list[tuple[str, str]] = []
     value_category_counts: dict[str, int] = {}
 
@@ -453,6 +496,10 @@ def main() -> None:
         for key in cc_totals:
             cc_totals[key] += sprint_cc[key]
 
+        sprint_tokens = load_token_usage(sprint_dir)
+        for key in cc_token_totals:
+            cc_token_totals[key] += sprint_tokens[key]
+
         # Enrichment docs
         docs = read_enrichment_docs(sprint_dir)
         for title in docs:
@@ -480,6 +527,7 @@ def main() -> None:
         ),
         cc_turns=cc_totals["turns"],
         cc_chars_written=cc_totals["chars_written"],
+        cc_tokens=cc_token_totals,
         key_docs=key_docs,
         value_category_counts=value_category_counts,
         project_names=project_names,
