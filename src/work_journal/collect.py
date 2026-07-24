@@ -208,8 +208,10 @@ def collect_claude_code_activity(
     work_dirs = [os.path.expanduser(os.environ.get("CLAUDE_WORK_DIRS", "~/git"))]
     output_file = cc_config.get("output", "claude-code/sessions.md")
     docs_output_file = cc_config.get("documents_output", "claude-code/documents.md")
+    tokens_output_file = cc_config.get("tokens_output", "claude-code/tokens-by-day.json")
     output_path = sprint_dir / output_file
     docs_output_path = sprint_dir / docs_output_file
+    tokens_output_path = sprint_dir / tokens_output_file
     raw_dir = sprint_dir / "claude-code"
 
     helper_args = [
@@ -227,6 +229,8 @@ def collect_claude_code_activity(
         str(raw_dir),
         "--documents-output",
         str(docs_output_path),
+        "--tokens-output",
+        str(tokens_output_path),
     ]
     for wd in work_dirs:
         helper_args.extend(["--work-dirs", wd])
@@ -423,6 +427,7 @@ def main():
                     **config.get("claude_code", {}),
                     "output": "claude-code/between-sprints-sessions.md",
                     "documents_output": "claude-code/between-sprints-documents.md",
+                    "tokens_output": "claude-code/between-sprints-tokens-by-day.json",
                 }
             },
             prior_sprint_end,

@@ -343,12 +343,21 @@ def format_duration(ms: int) -> str:
 
 def aggregate_tokens_by_day(
     sessions_by_project: dict[str, list[dict]],
+    since: str | None = None,
+    until: str | None = None,
 ) -> dict[str, dict[str, dict[str, int]]]:
-    """Merge per-session token metrics into {date: {model: totals}}."""
+    """Merge per-session token metrics into {date: {model: totals}}.
+
+    Dates outside [since, until] are dropped: a session spanning collection
+    windows carries entries from earlier days that belong to (and are counted
+    by) the prior window.
+    """
     days: dict[str, dict[str, dict[str, int]]] = {}
     for sessions in sessions_by_project.values():
         for s in sessions:
             for date, models in s["metrics"].get("tokens", {}).items():
+                if (since and date < since) or (until and date > until):
+                    continue
                 day = days.setdefault(date, {})
                 for model, usage in models.items():
                     totals = day.setdefault(model, dict.fromkeys(usage, 0))
@@ -364,7 +373,7 @@ def write_tokens_json(
     until: str,
 ) -> None:
     """Write the tokens-by-day artifact for a collection window."""
-    days = aggregate_tokens_by_day(sessions_by_project)
+    days = aggregate_tokens_by_day(sessions_by_project, since=since, until=until)
     payload = {
         "since": since,
         "until": until,
@@ -458,7 +467,9 @@ def format_markdown(
         "cache_read_input_tokens": 0,
         "cache_creation_input_tokens": 0,
     }
-    for models in aggregate_tokens_by_day(sessions_by_project).values():
+    for models in aggregate_tokens_by_day(
+        sessions_by_project, since=start_date, until=end_date
+    ).values():
         for usage in models.values():
             for field in token_totals:
                 token_totals[field] += usage.get(field, 0)

@@ -84,6 +84,24 @@ def test_analyze_conversation_missing_file_has_empty_tokens(tmp_path):
     assert metrics["tokens"] == {}
 
 
+def test_aggregate_tokens_by_day_clamps_to_window():
+    sessions_by_project = {
+        "/Users/x/git/a": [
+            {
+                "metrics": {
+                    "tokens": {
+                        "2026-06-11": {"claude-opus-4-8": _usage(7)},
+                        "2026-07-02": {"claude-opus-4-8": _usage(3)},
+                        "2026-07-25": {"claude-opus-4-8": _usage(9)},
+                    }
+                }
+            }
+        ],
+    }
+    days = aggregate_tokens_by_day(sessions_by_project, since="2026-07-01", until="2026-07-24")
+    assert days == {"2026-07-02": {"claude-opus-4-8": _usage(3)}}
+
+
 def test_aggregate_tokens_by_day_merges_sessions():
     sessions_by_project = {
         "/Users/x/git/a": [
