@@ -2,7 +2,19 @@
 
 import json
 
-from work_journal.claude_code.collect_activity import analyze_conversation
+from work_journal.claude_code.collect_activity import (
+    aggregate_tokens_by_day,
+    analyze_conversation,
+)
+
+
+def _usage(n):
+    return {
+        "input_tokens": n,
+        "output_tokens": n,
+        "cache_read_input_tokens": n,
+        "cache_creation_input_tokens": n,
+    }
 
 
 def _assistant_line(msg_id, model, ts, usage):
@@ -67,3 +79,22 @@ def test_analyze_conversation_tokens_by_model_by_date(tmp_path):
 def test_analyze_conversation_missing_file_has_empty_tokens(tmp_path):
     metrics = analyze_conversation(str(tmp_path), "/Users/x/git/repo", "nope")
     assert metrics["tokens"] == {}
+
+
+def test_aggregate_tokens_by_day_merges_sessions():
+    sessions_by_project = {
+        "/Users/x/git/a": [
+            {"metrics": {"tokens": {"2026-06-15": {"claude-opus-4-8": _usage(10)}}}},
+            {"metrics": {"tokens": {"2026-06-15": {"claude-opus-4-8": _usage(5)}}}},
+        ],
+        "/Users/x/git/b": [
+            {"metrics": {"tokens": {"2026-06-15": {"claude-haiku-4-5": _usage(1)}}}},
+        ],
+    }
+    days = aggregate_tokens_by_day(sessions_by_project)
+    assert days == {
+        "2026-06-15": {
+            "claude-opus-4-8": _usage(15),
+            "claude-haiku-4-5": _usage(1),
+        }
+    }

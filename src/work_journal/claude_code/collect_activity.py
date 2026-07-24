@@ -341,6 +341,22 @@ def format_duration(ms: int) -> str:
     return f"{minutes}m"
 
 
+def aggregate_tokens_by_day(
+    sessions_by_project: dict[str, list[dict]],
+) -> dict[str, dict[str, dict[str, int]]]:
+    """Merge per-session token metrics into {date: {model: totals}}."""
+    days: dict[str, dict[str, dict[str, int]]] = {}
+    for sessions in sessions_by_project.values():
+        for s in sessions:
+            for date, models in s["metrics"].get("tokens", {}).items():
+                day = days.setdefault(date, {})
+                for model, usage in models.items():
+                    totals = day.setdefault(model, dict.fromkeys(usage, 0))
+                    for field, value in usage.items():
+                        totals[field] = totals.get(field, 0) + value
+    return days
+
+
 def _count_documents(metrics: dict) -> tuple[int, int, int]:
     """Count created files, modified files, and total write chars from doc metrics."""
     created = 0
