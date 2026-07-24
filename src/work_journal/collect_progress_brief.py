@@ -112,13 +112,48 @@ def count_jira_issues(sprint_dir: Path) -> dict[str, dict[str, int]]:
     return counts
 
 
-def parse_claude_code_stats(sprint_dir: Path) -> tuple[int, str]:
-    """Extract summary stats from claude-code/sessions.md.
+def parse_duration_minutes(text: str) -> int:
+    """Parse a duration string like '17h 52m' or '52m' into total minutes."""
+    hours_match = re.search(r"(\d+)h", text)
+    minutes_match = re.search(r"(\d+)m", text)
+    hours = int(hours_match.group(1)) if hours_match else 0
+    minutes = int(minutes_match.group(1)) if minutes_match else 0
+    return hours * 60 + minutes
 
-    Returns (total_sessions, thinking_time_str).
+
+def format_duration_minutes(total_minutes: int) -> str:
+    """Format minutes as a duration string like '17h 52m' or '52m'."""
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def parse_char_count(text: str) -> int:
+    """Parse a char count like '361.0K', '1.2M', or '532' into an int."""
+    text = text.strip()
+    multiplier = 1
+    if text.endswith("M"):
+        multiplier, text = 1_000_000, text[:-1]
+    elif text.endswith("K"):
+        multiplier, text = 1_000, text[:-1]
+    return int(float(text) * multiplier)
+
+
+def format_char_count(chars: int) -> str:
+    """Format character count with K/M suffix (matches collect_activity)."""
+    if chars >= 1_000_000:
+        return f"{chars / 1_000_000:.1f}M"
+    if chars >= 1_000:
+        return f"{chars / 1_000:.1f}K"
+    return str(chars)
+
+
+def parse_claude_code_stats(sprint_dir: Path) -> dict[str, int]:
+    """Extract summary stats from claude-code session files.
+
+    Returns totals summed across the sprint and between-sprints session
+    files: sessions, thinking_minutes, turns, chars_written.
     """
-    sessions = 0
-    thinking_time = ""
+    totals = {"sessions": 0, "thinking_minutes": 0, "turns": 0, "chars_written": 0}
     for filename in ("claude-code/sessions.md", "claude-code/between-sprints-sessions.md"):
         path = sprint_dir / filename
         if not path.exists():
@@ -126,11 +161,17 @@ def parse_claude_code_stats(sprint_dir: Path) -> tuple[int, str]:
         text = path.read_text()
         sessions_match = re.search(r"\*\*Total sessions:\*\*\s*(\d+)", text)
         thinking_match = re.search(r"\*\*Claude thinking time:\*\*\s*(.+)", text)
+        turns_match = re.search(r"\*\*Total turns:\*\*\s*(\d+)", text)
+        chars_match = re.search(r"\*\*Total chars written:\*\*\s*(\S+)", text)
         if sessions_match:
-            sessions += int(sessions_match.group(1))
-        if thinking_match and not thinking_time:
-            thinking_time = thinking_match.group(1).strip()
-    return sessions, thinking_time
+            totals["sessions"] += int(sessions_match.group(1))
+        if thinking_match:
+            totals["thinking_minutes"] += parse_duration_minutes(thinking_match.group(1))
+        if turns_match:
+            totals["turns"] += int(turns_match.group(1))
+        if chars_match:
+            totals["chars_written"] += parse_char_count(chars_match.group(1))
+    return totals
 
 
 def count_prs(sprint_dir: Path) -> dict[str, int]:
@@ -192,6 +233,8 @@ def format_rollup(
     pr_totals: dict[str, int],
     cc_sessions: int,
     cc_thinking_time: str,
+    cc_turns: int,
+    cc_chars_written: int,
     key_docs: list[tuple[str, str]],
     value_category_counts: dict[str, int],
     project_names: dict[str, str],
@@ -251,6 +294,10 @@ def format_rollup(
         lines.append(f"| Claude Code sessions | {cc_sessions} |")
     if cc_thinking_time:
         lines.append(f"| Claude Code thinking time | {cc_thinking_time} |")
+    if cc_turns:
+        lines.append(f"| Claude Code turns | {cc_turns} |")
+    if cc_chars_written:
+        lines.append(f"| Claude Code chars written | {format_char_count(cc_chars_written)} |")
     total_accomplishments = sum(len(v) for v in accomplishments_by_project.values())
     lines.append(f"| Key accomplishments | {total_accomplishments} |")
     lines.append("")
@@ -358,8 +405,7 @@ def main() -> None:
     accomplishments_by_project: dict[str, list[dict]] = {}
     jira_totals: dict[str, dict[str, int]] = {}
     pr_totals: dict[str, int] = {"authored": 0, "reviewed": 0}
-    cc_sessions_total = 0
-    cc_thinking_time_last = ""
+    cc_totals = {"sessions": 0, "thinking_minutes": 0, "turns": 0, "chars_written": 0}
     key_docs: list[tuple[str, str]] = []
     value_category_counts: dict[str, int] = {}
 
@@ -403,10 +449,9 @@ def main() -> None:
         pr_totals["reviewed"] += sprint_prs["reviewed"]
 
         # Claude Code stats
-        sessions, thinking_time = parse_claude_code_stats(sprint_dir)
-        cc_sessions_total += sessions
-        if thinking_time:
-            cc_thinking_time_last = thinking_time
+        sprint_cc = parse_claude_code_stats(sprint_dir)
+        for key in cc_totals:
+            cc_totals[key] += sprint_cc[key]
 
         # Enrichment docs
         docs = read_enrichment_docs(sprint_dir)
@@ -427,8 +472,14 @@ def main() -> None:
         impact_metrics=impact_metrics,
         jira_totals=jira_totals,
         pr_totals=pr_totals,
-        cc_sessions=cc_sessions_total,
-        cc_thinking_time=cc_thinking_time_last,
+        cc_sessions=cc_totals["sessions"],
+        cc_thinking_time=(
+            format_duration_minutes(cc_totals["thinking_minutes"])
+            if cc_totals["thinking_minutes"]
+            else ""
+        ),
+        cc_turns=cc_totals["turns"],
+        cc_chars_written=cc_totals["chars_written"],
         key_docs=key_docs,
         value_category_counts=value_category_counts,
         project_names=project_names,
