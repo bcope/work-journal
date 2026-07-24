@@ -148,6 +148,7 @@ class ConversationMetrics(TypedDict):
     thinking_time_ms: int
     turn_count: int
     documents: dict[str, dict[str, Any]]
+    tokens: dict[str, dict[str, dict[str, int]]]
 
 
 def analyze_conversation(
@@ -167,6 +168,9 @@ def analyze_conversation(
         turn_count: number of turns (turn_duration entries)
         documents: dict of file_path -> {operations, write_chars,
             edit_net_chars, first_op, first_op_ts}
+        tokens: dict of date -> model -> {input_tokens, output_tokens,
+            cache_read_input_tokens, cache_creation_input_tokens},
+            deduplicated by message id
     """
     slug = project_slug(project_path)
     conversation_file = os.path.join(projects_path, slug, f"{session_id}.jsonl")
@@ -182,6 +186,7 @@ def analyze_conversation(
         "thinking_time_ms": 0,
         "turn_count": 0,
         "documents": {},
+        "tokens": {},
     }
 
     if not os.path.exists(conversation_file):
@@ -190,6 +195,7 @@ def analyze_conversation(
     first_ts = None
     last_ts = None
     seen_tool_uses = set()
+    seen_message_ids: set[str] = set()
 
     with open(conversation_file) as f:
         for line in f:
@@ -222,6 +228,35 @@ def analyze_conversation(
             elif entry_type == "assistant":
                 result["assistant_messages"] += 1
                 message = entry.get("message", {})
+
+                # Token usage: streaming repeats the same API message across
+                # lines, so count each message id once
+                usage = message.get("usage")
+                model = message.get("model")
+                message_id = message.get("id", "")
+                if (
+                    usage
+                    and model
+                    and not model.startswith("<")
+                    and message_id not in seen_message_ids
+                ):
+                    seen_message_ids.add(message_id)
+                    ts_ms = _parse_timestamp_ms(timestamp_str)
+                    if ts_ms is not None:
+                        date = datetime.fromtimestamp(ts_ms / 1000, tz=UTC).strftime("%Y-%m-%d")
+                        day = result["tokens"].setdefault(date, {})
+                        totals = day.setdefault(
+                            model,
+                            {
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                                "cache_read_input_tokens": 0,
+                                "cache_creation_input_tokens": 0,
+                            },
+                        )
+                        for field in totals:
+                            totals[field] += usage.get(field, 0)
+
                 content = message.get("content", [])
                 if isinstance(content, list):
                     for block in content:
