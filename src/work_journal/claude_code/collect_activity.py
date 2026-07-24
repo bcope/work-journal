@@ -9,6 +9,8 @@ Metrics extracted per session:
 - Thinking time: sum of turn_duration system entries (actual Claude compute)
 - Tool usage: tool calls by category
 - Documents: files created/modified via Write/Edit tool calls
+- Token usage: per-day, per-model input/output/cache token totals (deduplicated
+  by message id), written to tokens-by-day.json via --tokens-output
 
 Usage:
     uv run python3 src/work_journal/claude_code/collect_activity.py \
