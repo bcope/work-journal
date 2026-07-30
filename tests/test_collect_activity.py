@@ -8,6 +8,7 @@ from work_journal.claude_code.collect_activity import (
     aggregate_tokens_by_day,
     analyze_conversation,
     format_markdown,
+    has_activity,
     load_history,
     write_tokens_json,
 )
@@ -224,6 +225,14 @@ def test_load_history_filters_by_datetime_window(tmp_path):
     )
 
     assert set(sessions) == {"s1"}
+
+
+def test_has_activity():
+    empty = {"turn_count": 0, "tool_calls": {}, "tokens": {}}
+    assert not has_activity(empty)
+    assert has_activity({**empty, "turn_count": 1})
+    assert has_activity({**empty, "tokens": {"2026-07-15": {}}})
+    assert has_activity({**empty, "tool_calls": {"Bash": 2}})
 
 
 def test_aggregate_tokens_by_day_merges_sessions():

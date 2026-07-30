@@ -351,6 +351,16 @@ def analyze_conversation(
     return result
 
 
+def has_activity(metrics: ConversationMetrics) -> bool:
+    """True when a session has any in-window activity worth reporting.
+
+    A session pulled into the window by a bare /exit (or similar no-op
+    prompt) has no in-window turns, tool calls, or token usage and is
+    dropped from the report.
+    """
+    return bool(metrics["turn_count"] or metrics["tokens"] or any(metrics["tool_calls"].values()))
+
+
 def format_duration(ms: int) -> str:
     """Format milliseconds as a human-readable duration."""
     if ms <= 0:
@@ -794,11 +804,15 @@ def main():
 
     # Analyze each session's conversation file
     sessions_by_project: dict[str, list[dict]] = defaultdict(list)
+    skipped = 0
     for session_id, entry in sessions.items():
         project_path = entry["project"]
         metrics = analyze_conversation(
             args.projects_path, project_path, session_id, since_dt, until_dt
         )
+        if not has_activity(metrics):
+            skipped += 1
+            continue
         sessions_by_project[project_path].append(
             {
                 "session_id": session_id,
@@ -806,6 +820,12 @@ def main():
                 "display": entry.get("display", ""),
                 "metrics": metrics,
             }
+        )
+
+    if skipped:
+        print(
+            f"Skipped {skipped} sessions with no in-window activity.",
+            file=sys.stderr,
         )
 
     # Copy raw files if requested
