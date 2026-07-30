@@ -25,7 +25,7 @@ import os
 import shutil
 import sys
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -151,28 +151,42 @@ class ConversationMetrics(TypedDict):
 
 
 def analyze_conversation(
-    projects_path: str, project_path: str, session_id: str
+    projects_path: str,
+    project_path: str,
+    session_id: str,
+    since_dt: datetime,
+    until_dt: datetime,
+    day_tz: tzinfo | None = None,
 ) -> ConversationMetrics:
     """Read a conversation JSONL file and extract all metrics in a single pass.
 
+    Only entries whose timestamp falls inside the half-open window
+    [since_dt, until_dt) are counted, so a session spanning several
+    collection windows contributes each entry to exactly one window.
+
     Returns dict with:
-        duration_ms: gap between first and last timestamp (wall clock)
+        duration_ms: gap between first and last in-window timestamp (wall clock)
         user_messages: count of user-type entries (includes tool results)
         assistant_messages: count of assistant entries
         tool_calls: dict of tool_name -> count
         tool_categories: dict of category -> count
-        first_timestamp: ISO string
-        last_timestamp: ISO string
+        first_timestamp: ISO string (first in-window entry)
+        last_timestamp: ISO string (last in-window entry)
         thinking_time_ms: sum of turn_duration system entries
         turn_count: number of turns (turn_duration entries)
         documents: dict of file_path -> {operations, write_chars,
             edit_net_chars, first_op, first_op_ts}
-        tokens: dict of date -> model -> {input_tokens, output_tokens,
-            cache_read_input_tokens, cache_creation_input_tokens},
-            deduplicated by message id
+        tokens: dict of date (in day_tz, default local) -> model ->
+            {input_tokens, output_tokens, cache_read_input_tokens,
+            cache_creation_input_tokens}, deduplicated by message id
     """
     slug = project_slug(project_path)
     conversation_file = os.path.join(projects_path, slug, f"{session_id}.jsonl")
+
+    since_ms = int(since_dt.timestamp() * 1000)
+    until_ms = int(until_dt.timestamp() * 1000)
+    if day_tz is None:
+        day_tz = datetime.now().astimezone().tzinfo
 
     result: ConversationMetrics = {
         "duration_ms": 0,
@@ -208,28 +222,32 @@ def analyze_conversation(
 
             entry_type = entry.get("type")
             timestamp_str = entry.get("timestamp")
+            ts_ms = _parse_timestamp_ms(timestamp_str) if timestamp_str else None
+            in_window = ts_ms is not None and since_ms <= ts_ms < until_ms
 
-            # Track first/last timestamps
-            if timestamp_str:
-                ts_ms = _parse_timestamp_ms(timestamp_str)
-                if ts_ms is not None:
-                    if first_ts is None or ts_ms < first_ts:
-                        first_ts = ts_ms
-                        result["first_timestamp"] = timestamp_str
-                    if last_ts is None or ts_ms > last_ts:
-                        last_ts = ts_ms
-                        result["last_timestamp"] = timestamp_str
+            # Track first/last in-window timestamps
+            if in_window:
+                if first_ts is None or ts_ms < first_ts:
+                    first_ts = ts_ms
+                    result["first_timestamp"] = timestamp_str
+                if last_ts is None or ts_ms > last_ts:
+                    last_ts = ts_ms
+                    result["last_timestamp"] = timestamp_str
 
             # Count messages and extract tool/document metrics
             if entry_type == "user":
-                result["user_messages"] += 1
+                if in_window:
+                    result["user_messages"] += 1
 
             elif entry_type == "assistant":
-                result["assistant_messages"] += 1
+                if in_window:
+                    result["assistant_messages"] += 1
                 message = entry.get("message", {})
 
                 # Token usage: streaming repeats the same API message across
-                # lines, so count each message id once
+                # lines, so count each message id once. Out-of-window
+                # occurrences still mark the id seen, so a streamed repeat
+                # inside the window is not miscounted.
                 usage = message.get("usage")
                 model = message.get("model")
                 message_id = message.get("id", "")
@@ -240,9 +258,12 @@ def analyze_conversation(
                     and message_id not in seen_message_ids
                 ):
                     seen_message_ids.add(message_id)
-                    ts_ms = _parse_timestamp_ms(timestamp_str)
-                    if ts_ms is not None:
-                        date = datetime.fromtimestamp(ts_ms / 1000, tz=UTC).strftime("%Y-%m-%d")
+                    if in_window and ts_ms is not None:
+                        date = (
+                            datetime.fromtimestamp(ts_ms / 1000, tz=UTC)
+                            .astimezone(day_tz)
+                            .strftime("%Y-%m-%d")
+                        )
                         day = result["tokens"].setdefault(date, {})
                         totals = day.setdefault(
                             model,
@@ -269,6 +290,8 @@ def analyze_conversation(
                             continue
                         if tool_id:
                             seen_tool_uses.add(tool_id)
+                        if not in_window:
+                            continue
 
                         tool_name = block.get("name", "unknown")
                         result["tool_calls"][tool_name] += 1
@@ -317,7 +340,7 @@ def analyze_conversation(
                                 doc["first_op"] = "edit"
                                 doc["first_op_ts"] = timestamp_str
 
-            elif entry_type == "system" and entry.get("subtype") == "turn_duration":
+            elif entry_type == "system" and entry.get("subtype") == "turn_duration" and in_window:
                 duration = entry.get("durationMs", 0)
                 result["thinking_time_ms"] += duration
                 result["turn_count"] += 1
@@ -342,21 +365,16 @@ def format_duration(ms: int) -> str:
 
 def aggregate_tokens_by_day(
     sessions_by_project: dict[str, list[dict]],
-    since: str | None = None,
-    until: str | None = None,
 ) -> dict[str, dict[str, dict[str, int]]]:
     """Merge per-session token metrics into {date: {model: totals}}.
 
-    Dates outside [since, until] are dropped: a session spanning collection
-    windows carries entries from earlier days that belong to (and are counted
-    by) the prior window.
+    Per-session metrics are already filtered to the collection window by
+    analyze_conversation, so this is a pure merge.
     """
     days: dict[str, dict[str, dict[str, int]]] = {}
     for sessions in sessions_by_project.values():
         for s in sessions:
             for date, models in s["metrics"].get("tokens", {}).items():
-                if (since and date < since) or (until and date > until):
-                    continue
                 day = days.setdefault(date, {})
                 for model, usage in models.items():
                     totals = day.setdefault(model, dict.fromkeys(usage, 0))
@@ -368,14 +386,14 @@ def aggregate_tokens_by_day(
 def write_tokens_json(
     path: Path,
     sessions_by_project: dict[str, list[dict]],
-    since: str,
-    until: str,
+    since_dt: datetime,
+    until_dt: datetime,
 ) -> None:
     """Write the tokens-by-day artifact for a collection window."""
-    days = aggregate_tokens_by_day(sessions_by_project, since=since, until=until)
+    days = aggregate_tokens_by_day(sessions_by_project)
     payload = {
-        "since": since,
-        "until": until,
+        "since": since_dt.isoformat(),
+        "until": until_dt.isoformat(),
         "days": [{"date": date, "models": days[date]} for date in sorted(days)],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -415,14 +433,21 @@ def _format_count(n: int) -> str:
     return _format_chars(n)
 
 
+def _format_window(since_dt: datetime, until_dt: datetime) -> str:
+    """Render a half-open datetime window in local time for report headers."""
+    since_local = since_dt.astimezone()
+    until_local = until_dt.astimezone()
+    return f"{since_local:%Y-%m-%d %H:%M} to {until_local:%Y-%m-%d %H:%M} {until_local:%Z}"
+
+
 def format_markdown(
     sessions_by_project: dict[str, list[dict]],
-    start_date: str,
-    end_date: str,
+    since_dt: datetime,
+    until_dt: datetime,
 ) -> str:
     """Format session inventory and tool usage as markdown."""
     lines: list[str] = []
-    lines.append(f"# Claude Code Sessions ({start_date} to {end_date})")
+    lines.append(f"# Claude Code Sessions ({_format_window(since_dt, until_dt)})")
     lines.append("")
 
     # Aggregate stats
@@ -466,9 +491,7 @@ def format_markdown(
         "cache_read_input_tokens": 0,
         "cache_creation_input_tokens": 0,
     }
-    for models in aggregate_tokens_by_day(
-        sessions_by_project, since=start_date, until=end_date
-    ).values():
+    for models in aggregate_tokens_by_day(sessions_by_project).values():
         for usage in models.values():
             for field in token_totals:
                 token_totals[field] += usage.get(field, 0)
@@ -584,12 +607,12 @@ def _make_relative(file_path: str, project_path: str) -> str:
 
 def format_documents_markdown(
     sessions_by_project: dict[str, list[dict]],
-    start_date: str,
-    end_date: str,
+    since_dt: datetime,
+    until_dt: datetime,
 ) -> str:
     """Format a documents-generated report as markdown."""
     lines: list[str] = []
-    lines.append(f"# Documents Generated ({start_date} to {end_date})")
+    lines.append(f"# Documents Generated ({_format_window(since_dt, until_dt)})")
     lines.append("")
 
     # Collect all documents across sessions, grouped by project
@@ -752,11 +775,6 @@ def main():
     since_dt = resolve_window_bound(args.since)
     until_dt = resolve_window_bound(args.until, end=True)
 
-    # Interim day strings for the format/token functions (replaced by full
-    # datetime plumbing in the next change)
-    since_day = since_dt.astimezone().strftime("%Y-%m-%d")
-    until_day = (until_dt.astimezone() - timedelta(microseconds=1)).strftime("%Y-%m-%d")
-
     # Load and filter history
     sessions = load_history(args.history_path, since_dt, until_dt, args.work_dirs)
 
@@ -766,7 +784,7 @@ def main():
             file=sys.stderr,
         )
         # Still output valid markdown
-        print(format_markdown({}, since_day, until_day))
+        print(format_markdown({}, since_dt, until_dt))
         return
 
     print(
@@ -778,7 +796,9 @@ def main():
     sessions_by_project: dict[str, list[dict]] = defaultdict(list)
     for session_id, entry in sessions.items():
         project_path = entry["project"]
-        metrics = analyze_conversation(args.projects_path, project_path, session_id)
+        metrics = analyze_conversation(
+            args.projects_path, project_path, session_id, since_dt, until_dt
+        )
         sessions_by_project[project_path].append(
             {
                 "session_id": session_id,
@@ -815,7 +835,7 @@ def main():
     if args.documents_output:
         docs_path = Path(args.documents_output)
         docs_path.parent.mkdir(parents=True, exist_ok=True)
-        docs_md = format_documents_markdown(sessions_by_project, since_day, until_day)
+        docs_md = format_documents_markdown(sessions_by_project, since_dt, until_dt)
         with open(docs_path, "w") as f:
             f.write(docs_md)
         print(f"Wrote documents report to {docs_path}", file=sys.stderr)
@@ -823,11 +843,11 @@ def main():
     # Write token usage artifact if requested
     if args.tokens_output:
         tokens_path = Path(args.tokens_output)
-        write_tokens_json(tokens_path, sessions_by_project, since_day, until_day)
+        write_tokens_json(tokens_path, sessions_by_project, since_dt, until_dt)
         print(f"Wrote token usage to {tokens_path}", file=sys.stderr)
 
     # Output sessions markdown to stdout
-    print(format_markdown(sessions_by_project, since_day, until_day))
+    print(format_markdown(sessions_by_project, since_dt, until_dt))
 
 
 if __name__ == "__main__":

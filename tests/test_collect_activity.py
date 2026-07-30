@@ -1,7 +1,7 @@
 """Tests for claude_code/collect_activity.py."""
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 from work_journal.claude_code.collect_activity import (
     _format_count,
@@ -39,6 +39,99 @@ def _write_transcript(projects_path, project_path, session_id, lines):
     (session_dir / f"{session_id}.jsonl").write_text("\n".join(lines) + "\n")
 
 
+# A window wide enough to include every entry in the legacy tests
+WIDE_SINCE = datetime(2026, 1, 1, tzinfo=UTC)
+WIDE_UNTIL = datetime(2027, 1, 1, tzinfo=UTC)
+
+
+def _turn(ts, ms):
+    return json.dumps(
+        {"type": "system", "subtype": "turn_duration", "timestamp": ts, "durationMs": ms}
+    )
+
+
+def _tool_line(msg_id, ts, tool_id, name="Bash", inp=None):
+    block = {"type": "tool_use", "id": tool_id, "name": name, "input": inp or {}}
+    return json.dumps(
+        {
+            "type": "assistant",
+            "timestamp": ts,
+            "message": {
+                "id": msg_id,
+                "model": "claude-fable-5",
+                "usage": _usage(1),
+                "content": [block],
+            },
+        }
+    )
+
+
+def test_analyze_conversation_filters_all_metrics_to_window(tmp_path):
+    win_since = datetime(2026, 7, 15, tzinfo=UTC)
+    win_until = datetime(2026, 7, 16, tzinfo=UTC)
+    lines = [
+        _turn("2026-07-10T10:00:00Z", 300_000),  # out
+        _turn("2026-07-15T10:00:00Z", 60_000),  # in
+        # out: tool call + Write doc + tokens
+        _tool_line(
+            "m1",
+            "2026-07-10T10:01:00Z",
+            "t1",
+            "Write",
+            {"file_path": "/Users/x/git/repo/a.md", "content": "xy"},
+        ),
+        # in
+        _tool_line(
+            "m2",
+            "2026-07-15T10:01:00Z",
+            "t2",
+            "Write",
+            {"file_path": "/Users/x/git/repo/b.md", "content": "xyz"},
+        ),
+        json.dumps({"type": "user", "timestamp": "2026-07-10T10:02:00Z"}),  # out
+        json.dumps({"type": "user", "timestamp": "2026-07-15T10:02:00Z"}),  # in
+    ]
+    _write_transcript(tmp_path, "/Users/x/git/repo", "s1", lines)
+
+    m = analyze_conversation(
+        str(tmp_path), "/Users/x/git/repo", "s1", win_since, win_until, day_tz=UTC
+    )
+
+    assert m["thinking_time_ms"] == 60_000
+    assert m["turn_count"] == 1
+    assert sum(m["tool_calls"].values()) == 1
+    assert list(m["documents"]) == ["/Users/x/git/repo/b.md"]
+    assert m["user_messages"] == 1
+    assert m["assistant_messages"] == 1
+    assert list(m["tokens"]) == ["2026-07-15"]
+
+
+def test_analyze_conversation_fully_out_of_window_is_empty(tmp_path):
+    win_since = datetime(2026, 7, 15, tzinfo=UTC)
+    win_until = datetime(2026, 7, 16, tzinfo=UTC)
+    lines = [_turn("2026-07-10T10:00:00Z", 300_000)]
+    _write_transcript(tmp_path, "/Users/x/git/repo", "s1", lines)
+
+    m = analyze_conversation(str(tmp_path), "/Users/x/git/repo", "s1", win_since, win_until)
+
+    assert m["turn_count"] == 0
+    assert m["thinking_time_ms"] == 0
+    assert m["duration_ms"] == 0
+
+
+def test_analyze_conversation_buckets_token_days_in_day_tz(tmp_path):
+    # 00:30 UTC on 6/16 is still 6/15 in UTC-5
+    tz = timezone(timedelta(hours=-5))
+    lines = [_tool_line("m1", "2026-06-16T00:30:00Z", "t1")]
+    _write_transcript(tmp_path, "/Users/x/git/repo", "s1", lines)
+
+    m = analyze_conversation(
+        str(tmp_path), "/Users/x/git/repo", "s1", WIDE_SINCE, WIDE_UNTIL, day_tz=tz
+    )
+
+    assert list(m["tokens"]) == ["2026-06-15"]
+
+
 def test_analyze_conversation_tokens_by_model_by_date(tmp_path):
     usage_a = {
         "input_tokens": 100,
@@ -73,7 +166,9 @@ def test_analyze_conversation_tokens_by_model_by_date(tmp_path):
     ]
     _write_transcript(tmp_path, "/Users/x/git/repo", "sess1", lines)
 
-    metrics = analyze_conversation(str(tmp_path), "/Users/x/git/repo", "sess1")
+    metrics = analyze_conversation(
+        str(tmp_path), "/Users/x/git/repo", "sess1", WIDE_SINCE, WIDE_UNTIL, day_tz=UTC
+    )
 
     assert metrics["tokens"] == {
         "2026-06-15": {"claude-opus-4-8": usage_a},
@@ -82,7 +177,9 @@ def test_analyze_conversation_tokens_by_model_by_date(tmp_path):
 
 
 def test_analyze_conversation_missing_file_has_empty_tokens(tmp_path):
-    metrics = analyze_conversation(str(tmp_path), "/Users/x/git/repo", "nope")
+    metrics = analyze_conversation(
+        str(tmp_path), "/Users/x/git/repo", "nope", WIDE_SINCE, WIDE_UNTIL
+    )
     assert metrics["tokens"] == {}
 
 
@@ -127,24 +224,6 @@ def test_load_history_filters_by_datetime_window(tmp_path):
     )
 
     assert set(sessions) == {"s1"}
-
-
-def test_aggregate_tokens_by_day_clamps_to_window():
-    sessions_by_project = {
-        "/Users/x/git/a": [
-            {
-                "metrics": {
-                    "tokens": {
-                        "2026-06-11": {"claude-opus-4-8": _usage(7)},
-                        "2026-07-02": {"claude-opus-4-8": _usage(3)},
-                        "2026-07-25": {"claude-opus-4-8": _usage(9)},
-                    }
-                }
-            }
-        ],
-    }
-    days = aggregate_tokens_by_day(sessions_by_project, since="2026-07-01", until="2026-07-24")
-    assert days == {"2026-07-02": {"claude-opus-4-8": _usage(3)}}
 
 
 def test_aggregate_tokens_by_day_merges_sessions():
@@ -201,12 +280,12 @@ def test_format_markdown_token_line():
             },
         },
     }
-    md = format_markdown({"/Users/x/git/a": [session]}, "2026-06-12", "2026-06-30")
+    md = format_markdown({"/Users/x/git/a": [session]}, WIDE_SINCE, WIDE_UNTIL)
     assert "- **Token usage:** 1.0K in / 2.0K out / 3.0K cache read / 4.0K cache write" in md
 
 
 def test_format_markdown_no_token_line_when_absent():
-    md = format_markdown({}, "2026-06-12", "2026-06-30")
+    md = format_markdown({}, WIDE_SINCE, WIDE_UNTIL)
     assert "Token usage" not in md
 
 
@@ -224,9 +303,9 @@ def test_write_tokens_json(tmp_path):
         ]
     }
     out = tmp_path / "sub" / "tokens-by-day.json"
-    write_tokens_json(out, sessions_by_project, "2026-06-12", "2026-06-30")
+    write_tokens_json(out, sessions_by_project, WIDE_SINCE, WIDE_UNTIL)
     data = json.loads(out.read_text())
-    assert data["since"] == "2026-06-12"
-    assert data["until"] == "2026-06-30"
+    assert data["since"] == WIDE_SINCE.isoformat()
+    assert data["until"] == WIDE_UNTIL.isoformat()
     assert [d["date"] for d in data["days"]] == ["2026-06-15", "2026-06-16"]
     assert data["days"][0]["models"] == {"claude-opus-4-8": _usage(1)}
