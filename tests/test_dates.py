@@ -1,8 +1,9 @@
 """Tests for work_journal.dates."""
 
 import re
+from datetime import UTC
 
-from work_journal.dates import midnight_iso
+from work_journal.dates import midnight_iso, resolve_window_bound
 
 
 def test_midnight_iso_format():
@@ -29,3 +30,39 @@ def test_midnight_iso_different_dates():
     for date_str in ["2025-12-31", "2026-01-01", "2026-06-15"]:
         result = midnight_iso(date_str)
         assert result.startswith(f"{date_str}T00:00:00")
+
+
+def test_resolve_window_bound_bare_date_is_local_midnight():
+    """A bare date anchors to local midnight of that day."""
+    dt = resolve_window_bound("2026-07-15")
+    assert (dt.hour, dt.minute) == (0, 0)
+    assert dt.tzinfo is not None
+    assert dt.date().isoformat() == "2026-07-15"
+
+
+def test_resolve_window_bound_end_date_rolls_to_next_midnight():
+    """An end-bound bare date rolls to the next day's midnight (half-open)."""
+    dt = resolve_window_bound("2026-07-15", end=True)
+    assert dt.date().isoformat() == "2026-07-16"
+    assert (dt.hour, dt.minute) == (0, 0)
+
+
+def test_resolve_window_bound_iso_datetime_passthrough():
+    """ISO datetimes pass through unchanged, including Z-suffixed UTC."""
+    dt = resolve_window_bound("2026-07-14T17:30:48.893Z")
+    assert dt.tzinfo is not None
+    assert dt.astimezone(UTC).hour == 17
+
+
+def test_resolve_window_bound_iso_datetime_ignores_end_flag():
+    """The end flag only affects bare dates, not explicit datetimes."""
+    dt = resolve_window_bound("2026-07-14T17:30:48.893Z", end=True)
+    assert dt.astimezone(UTC).day == 14
+    assert dt.astimezone(UTC).hour == 17
+
+
+def test_resolve_window_bound_naive_datetime_assumed_local():
+    """A naive datetime is interpreted in the system local timezone."""
+    dt = resolve_window_bound("2026-07-14T13:00:00")
+    assert dt.tzinfo is not None
+    assert (dt.hour, dt.day) == (13, 14)
