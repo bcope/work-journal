@@ -766,6 +766,17 @@ def main():
         help="Copy raw source files (stats-cache.json, filtered history.jsonl) to this directory",
     )
     parser.add_argument(
+        "--raw-prefix",
+        default="",
+        help="Filename prefix for the raw history excerpt (avoids collisions when"
+        " multiple windows share a --copy-raw directory)",
+    )
+    parser.add_argument(
+        "--skip-stats-cache",
+        action="store_true",
+        help="Skip copying the stats cache snapshot when using --copy-raw",
+    )
+    parser.add_argument(
         "--documents-output",
         metavar="PATH",
         help="Write documents-generated markdown to this file",
@@ -834,7 +845,7 @@ def main():
         raw_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy stats cache snapshot
-        if os.path.exists(args.stats_cache_path):
+        if not args.skip_stats_cache and os.path.exists(args.stats_cache_path):
             shutil.copy2(args.stats_cache_path, raw_dir / "stats-cache-snapshot.json")
             print(
                 f"Copied stats cache to {raw_dir / 'stats-cache-snapshot.json'}",
@@ -842,7 +853,7 @@ def main():
             )
 
         # Write filtered history excerpt
-        excerpt_path = raw_dir / "history-excerpt.jsonl"
+        excerpt_path = raw_dir / f"{args.raw_prefix}history-excerpt.jsonl"
         with open(excerpt_path, "w") as f:
             for _session_id, entry in sorted(sessions.items(), key=lambda x: x[1]["timestamp"]):
                 f.write(json.dumps(entry) + "\n")
