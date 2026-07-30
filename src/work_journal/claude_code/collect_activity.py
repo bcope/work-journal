@@ -223,10 +223,10 @@ def analyze_conversation(
             entry_type = entry.get("type")
             timestamp_str = entry.get("timestamp")
             ts_ms = _parse_timestamp_ms(timestamp_str) if timestamp_str else None
-            in_window = ts_ms is not None and since_ms <= ts_ms < until_ms
-
-            # Track first/last in-window timestamps
-            if in_window:
+            in_window = False
+            if ts_ms is not None and since_ms <= ts_ms < until_ms:
+                in_window = True
+                # Track first/last in-window timestamps
                 if first_ts is None or ts_ms < first_ts:
                     first_ts = ts_ms
                     result["first_timestamp"] = timestamp_str

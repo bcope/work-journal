@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections import defaultdict
 
-from work_journal.dates import midnight_iso
+from work_journal.dates import resolve_window_bound, window_bounds_iso
 
 PR_JSON_FIELDS = "number,title,url,state,createdAt,updatedAt,closedAt,repository"
 
@@ -37,12 +37,13 @@ def _run_gh(args: list[str]) -> str:
 
 def search_authored_prs(since: str, until: str, org: str) -> list[dict]:
     """Search for PRs authored by the current user in the date range."""
+    since_iso, until_iso = window_bounds_iso(since, until)
     output = _run_gh(
         [
             "search",
             "prs",
             "--author=@me",
-            f"--created={midnight_iso(since)}..{midnight_iso(until)}",
+            f"--created={since_iso}..{until_iso}",
             f"--owner={org}",
             "--limit=200",
             f"--json={PR_JSON_FIELDS}",
@@ -53,12 +54,13 @@ def search_authored_prs(since: str, until: str, org: str) -> list[dict]:
 
 def search_reviewed_prs(since: str, until: str, org: str) -> list[dict]:
     """Search for PRs reviewed by the current user in the date range."""
+    since_iso, until_iso = window_bounds_iso(since, until)
     output = _run_gh(
         [
             "search",
             "prs",
             "--reviewed-by=@me",
-            f"--updated={midnight_iso(since)}..{midnight_iso(until)}",
+            f"--updated={since_iso}..{until_iso}",
             f"--owner={org}",
             "--limit=200",
             f"--json={PR_JSON_FIELDS}",
@@ -76,13 +78,14 @@ def search_repo_prs(repo: str, since: str, until: str) -> list[dict]:
     Returns an empty list on error instead of exiting, so the caller
     can continue collecting data from other repos.
     """
+    since_iso, until_iso = window_bounds_iso(since, until)
     result = subprocess.run(
         [
             "gh",
             "search",
             "prs",
             f"--repo={repo}",
-            f"--updated={midnight_iso(since)}..{midnight_iso(until)}",
+            f"--updated={since_iso}..{until_iso}",
             "--limit=200",
             f"--json={PR_JSON_FIELDS}",
         ],
@@ -102,13 +105,14 @@ def search_merged_prs(since: str, until: str, org: str, author: str | None = Non
     Returns an empty list on error instead of exiting.
     """
     author_flag = f"--author={author}" if author else "--author=@me"
+    since_iso, until_iso = window_bounds_iso(since, until)
     result = subprocess.run(
         [
             "gh",
             "search",
             "prs",
             author_flag,
-            f"--merged-at={midnight_iso(since)}..{midnight_iso(until)}",
+            f"--merged-at={since_iso}..{until_iso}",
             f"--owner={org}",
             "--limit=50",
             f"--json={PR_JSON_FIELDS}",
@@ -133,13 +137,14 @@ def search_closed_prs(since: str, until: str, org: str, author: str | None = Non
     Returns an empty list on error instead of exiting.
     """
     author_flag = f"--author={author}" if author else "--author=@me"
+    since_iso, until_iso = window_bounds_iso(since, until)
     result = subprocess.run(
         [
             "gh",
             "search",
             "prs",
             author_flag,
-            f"--closed={midnight_iso(since)}..{midnight_iso(until)}",
+            f"--closed={since_iso}..{until_iso}",
             f"--owner={org}",
             "--limit=50",
             f"--json={PR_JSON_FIELDS}",
@@ -174,7 +179,7 @@ def search_open_prs(org: str, author: str | None = None, since: str | None = Non
         f"--json={PR_JSON_FIELDS}",
     ]
     if since:
-        cmd.insert(-1, f"--updated={midnight_iso(since)}..")
+        cmd.insert(-1, f"--updated={resolve_window_bound(since).isoformat()}..")
     result = subprocess.run(
         cmd,
         capture_output=True,

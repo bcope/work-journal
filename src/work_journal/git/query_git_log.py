@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 
-from work_journal.dates import midnight_iso
+from work_journal.dates import window_bounds_iso
 
 DEFAULT_REPOS_DIR = os.path.expanduser(os.environ.get("GIT_REPOS_DIR", "~/git"))
 DEFAULT_AUTHOR = os.environ.get("GIT_AUTHOR", "")
@@ -32,13 +32,14 @@ def get_commits(
     until: str,
 ) -> list[str]:
     """Run git log in a repo and return list of oneline commit strings."""
+    since_iso, until_iso = window_bounds_iso(since, until)
     result = subprocess.run(
         [
             "git",
             "log",
             f"--author={author}",
-            f"--after={midnight_iso(since)}",
-            f"--before={midnight_iso(until)}",
+            f"--after={since_iso}",
+            f"--before={until_iso}",
             "--oneline",
             "--no-merges",
         ],

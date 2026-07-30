@@ -3,7 +3,7 @@
 import re
 from datetime import UTC
 
-from work_journal.dates import midnight_iso, resolve_window_bound
+from work_journal.dates import midnight_iso, resolve_window_bound, window_bounds_iso
 
 
 def test_midnight_iso_format():
@@ -66,3 +66,17 @@ def test_resolve_window_bound_naive_datetime_assumed_local():
     dt = resolve_window_bound("2026-07-14T13:00:00")
     assert dt.tzinfo is not None
     assert (dt.hour, dt.day) == (13, 14)
+
+
+def test_window_bounds_iso_bare_dates_include_full_days():
+    """A bare-date pair covers both named days entirely."""
+    since, until = window_bounds_iso("2026-07-15", "2026-07-30")
+    assert since.startswith("2026-07-15T00:00:00")
+    assert until.startswith("2026-07-31T00:00:00")
+
+
+def test_window_bounds_iso_datetimes_pass_through():
+    """Explicit datetimes are preserved exactly."""
+    since, until = window_bounds_iso("2026-07-14T17:30:48+00:00", "2026-07-30T17:00:00+00:00")
+    assert since == "2026-07-14T17:30:48+00:00"
+    assert until == "2026-07-30T17:00:00+00:00"

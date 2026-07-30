@@ -15,11 +15,13 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import requests
 
 from work_journal.config import load_sprint_config, load_sprint_notes_config
+from work_journal.dates import resolve_window_bound
 from work_journal.git.query_git_log import find_git_repos, get_commits
 from work_journal.git.query_git_log import format_markdown as format_git_markdown
 from work_journal.github.query_github_prs import (
@@ -87,6 +89,29 @@ def extract_dates(sprint_info: dict) -> tuple[str, str]:
     start = sprint_info["startDate"][:10]
     end = sprint_info["endDate"][:10]
     return start, end
+
+
+def compute_windows(
+    sprint_info: dict, prior_sprint: dict | None
+) -> tuple[datetime, datetime, datetime | None, datetime | None]:
+    """Datetime collection windows, half-open [since, until).
+
+    Sprint: local midnight of the start day -> sprint close instant
+    (completeDate, falling back to endDate). Between: prior sprint close
+    instant -> local midnight of the start day; None/None when empty. The
+    windows chain without overlap, so no activity is counted twice.
+    """
+    start_dt = resolve_window_bound(sprint_info["startDate"])
+    sprint_since = start_dt.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    sprint_until = resolve_window_bound(sprint_info.get("completeDate") or sprint_info["endDate"])
+    between_since = between_until = None
+    if prior_sprint:
+        raw = prior_sprint.get("completeDate") or prior_sprint.get("endDate")
+        if raw:
+            prior_close = resolve_window_bound(raw)
+            if prior_close < sprint_since:
+                between_since, between_until = prior_close, sprint_since
+    return sprint_since, sprint_until, between_since, between_until
 
 
 def template_jql(jql_template: str, variables: dict) -> str:
@@ -194,7 +219,12 @@ def collect_git_commits(sprint_dir: Path, config: dict, start_date: str, end_dat
 
 
 def collect_claude_code_activity(
-    sprint_dir: Path, config: dict, start_date: str, end_date: str
+    sprint_dir: Path,
+    config: dict,
+    start_date: str,
+    end_date: str,
+    raw_prefix: str = "",
+    skip_stats_cache: bool = False,
 ) -> None:
     """Collect Claude Code session activity data."""
     cc_config = config.get("claude_code", {})
@@ -234,6 +264,10 @@ def collect_claude_code_activity(
     ]
     for wd in work_dirs:
         helper_args.extend(["--work-dirs", wd])
+    if raw_prefix:
+        helper_args.extend(["--raw-prefix", raw_prefix])
+    if skip_stats_cache:
+        helper_args.append("--skip-stats-cache")
 
     print(f"  Claude Code activity: {start_date} to {end_date}")
     run_helper(
@@ -318,15 +352,26 @@ def main():
 
     # Find previous sprint to capture between-sprints work
     prior_sprint = find_previous_sprint(session, board_id, sprint_info)
+    sprint_since, sprint_until, between_since, between_until = compute_windows(
+        sprint_info, prior_sprint
+    )
+    print(f"  Sprint window: {sprint_since.isoformat()} to {sprint_until.isoformat()}")
+
+    # Prior sprint end date (YYYY-MM-DD) is still used in JQL templates
     prior_sprint_end: str | None = None
     if prior_sprint:
-        # completeDate is the actual close time; fall back to endDate
         raw = prior_sprint.get("completeDate") or prior_sprint.get("endDate", "")
         prior_sprint_end = raw[:10] if raw else None
-        if prior_sprint_end:
-            print(f"  Prior sprint: {prior_sprint.get('name', '?')} (ended {prior_sprint_end})")
-        else:
-            print("  Prior sprint found but has no end date, skipping between-sprints collection")
+
+    has_gap = between_since is not None and between_until is not None
+    if has_gap:
+        assert between_since is not None and between_until is not None
+        print(
+            f"  Prior sprint: {prior_sprint.get('name', '?') if prior_sprint else '?'}"
+            f" (between window {between_since.isoformat()} to {between_until.isoformat()})"
+        )
+    elif prior_sprint:
+        print("  Prior sprint leaves no between-sprints window, skipping that collection")
     else:
         print("  No prior sprint found, skipping between-sprints collection")
     print()
@@ -339,8 +384,6 @@ def main():
         "sprint_id": str(sprint_id),
         "prior_sprint_end": prior_sprint_end or start_date,
     }
-
-    has_gap = prior_sprint_end is not None and prior_sprint_end < start_date
 
     if args.dry_run:
         print("Dry run — would collect:")
@@ -364,7 +407,10 @@ def main():
         cc_out = cc_cfg.get("output", "claude-code/sessions.md")
         print(f"  Claude Code activity: work_dirs={cc_work} -> {cc_out}")
         if has_gap:
-            print(f"  Between-sprints ({prior_sprint_end} to {start_date}):")
+            assert between_since is not None and between_until is not None
+            print(
+                f"  Between-sprints ({between_since.isoformat()} to {between_until.isoformat()}):"
+            )
             print("    GitHub PRs -> github/between-sprints-prs.md")
             print("    Git commits -> git/between-sprints-commit-log.md")
             print("    Claude Code -> claude-code/between-sprints-sessions.md")
@@ -387,36 +433,40 @@ def main():
     print()
 
     print("Collecting GitHub PRs...")
-    collect_github_prs(sprint_dir, config, start_date, end_date)
+    collect_github_prs(sprint_dir, config, sprint_since.isoformat(), sprint_until.isoformat())
     print()
 
     print("Collecting git commits...")
-    collect_git_commits(sprint_dir, config, start_date, end_date)
+    collect_git_commits(sprint_dir, config, sprint_since.isoformat(), sprint_until.isoformat())
     print()
 
     print("Collecting Claude Code activity...")
-    collect_claude_code_activity(sprint_dir, config, start_date, end_date)
+    collect_claude_code_activity(
+        sprint_dir, config, sprint_since.isoformat(), sprint_until.isoformat()
+    )
     print()
 
-    # Between-sprints collection (prior sprint end → current sprint start)
+    # Between-sprints collection (prior sprint close → current sprint start day)
     if has_gap:
-        assert prior_sprint_end is not None
-        print(f"Collecting between-sprints data ({prior_sprint_end} to {start_date})...")
+        assert between_since is not None and between_until is not None
+        since_iso = between_since.isoformat()
+        until_iso = between_until.isoformat()
+        print(f"Collecting between-sprints data ({since_iso} to {until_iso})...")
 
         print("  GitHub PRs (between sprints)...")
         collect_github_prs(
             sprint_dir,
             {"github": {**config.get("github", {}), "output": "github/between-sprints-prs.md"}},
-            prior_sprint_end,
-            start_date,
+            since_iso,
+            until_iso,
         )
 
         print("  Git commits (between sprints)...")
         collect_git_commits(
             sprint_dir,
             {"git": {**config.get("git", {}), "output": "git/between-sprints-commit-log.md"}},
-            prior_sprint_end,
-            start_date,
+            since_iso,
+            until_iso,
         )
 
         print("  Claude Code activity (between sprints)...")
@@ -430,8 +480,10 @@ def main():
                     "tokens_output": "claude-code/between-sprints-tokens-by-day.json",
                 }
             },
-            prior_sprint_end,
-            start_date,
+            since_iso,
+            until_iso,
+            raw_prefix="between-sprints-",
+            skip_stats_cache=True,
         )
         print()
 

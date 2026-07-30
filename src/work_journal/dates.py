@@ -30,3 +30,15 @@ def resolve_window_bound(value: str, *, end: bool = False) -> datetime:
     if end:
         d += timedelta(days=1)
     return d.astimezone()
+
+
+def window_bounds_iso(since: str, until: str) -> tuple[str, str]:
+    """Resolve a since/until pair to ISO strings for half-open range queries.
+
+    Accepts bare dates or ISO datetimes (see resolve_window_bound); a bare
+    until date is rolled forward so the named day is fully included.
+    """
+    return (
+        resolve_window_bound(since).isoformat(),
+        resolve_window_bound(until, end=True).isoformat(),
+    )

@@ -26,6 +26,7 @@ from work_journal.claude_code.collect_activity import (
     repo_name,
 )
 from work_journal.config import load_shared_config, load_standup_config
+from work_journal.dates import resolve_window_bound
 from work_journal.git.query_git_log import find_git_repos, get_commits
 from work_journal.git.query_git_log import format_markdown as format_git_markdown
 from work_journal.github.query_github_prs import (
@@ -142,14 +143,14 @@ def collect_claude_activity(
 
     Returns per-repo metrics and aggregate totals, or None if no sessions found.
     """
-    yesterday_str = yesterday.isoformat()
-    today_str = today.isoformat()
+    since_dt = resolve_window_bound(yesterday.isoformat())
+    until_dt = resolve_window_bound(today.isoformat(), end=True)
 
     history_path = DEFAULT_HISTORY_PATH
     if not os.path.exists(history_path):
         return None
 
-    sessions = load_history(history_path, yesterday_str, today_str, DEFAULT_WORK_DIRS)
+    sessions = load_history(history_path, since_dt, until_dt, DEFAULT_WORK_DIRS)
     if not sessions:
         return None
 
@@ -163,7 +164,9 @@ def collect_claude_activity(
         for session_id, entry in sessions.items():
             project_path = entry["project"]
             name = repo_name(project_path)
-            metrics = analyze_conversation(DEFAULT_PROJECTS_PATH, project_path, session_id)
+            metrics = analyze_conversation(
+                DEFAULT_PROJECTS_PATH, project_path, session_id, since_dt, until_dt
+            )
 
             if name not in repos:
                 repos[name] = {
