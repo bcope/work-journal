@@ -5,6 +5,12 @@ work/sprint-notes/{sprint}/sprint.yaml for the sprint name. Resolves the sprint
 name to dates via the Jira Agile API, then runs all configured data collection
 steps and writes outputs to the sprint directory.
 
+Git, GitHub, and Claude Code data use half-open datetime windows that chain
+without overlap: the sprint window runs from local midnight of the start day to
+the sprint close instant, and the between-sprints window runs from the prior
+sprint's close instant to local midnight of the start day (see
+compute_windows). Jira JQL queries remain day-based.
+
 Usage:
     uv run python3 src/work_journal/collect.py 2026-02-A
     uv run python3 src/work_journal/collect.py 2026-02-A --dry-run

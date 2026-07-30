@@ -1,22 +1,30 @@
-"""Collect Claude Code activity data for a sprint date range.
+"""Collect Claude Code activity data for a collection window.
 
 Reads the Claude history file (path configured via CLAUDE_HISTORY_PATH env var),
-filters to work projects
-in the date range, reads conversation JSONL files for metrics, and outputs
-a markdown session inventory and documents-generated report.
+filters to work projects in the window, reads conversation JSONL files for
+metrics, and outputs a markdown session inventory and documents-generated report.
+
+Windows are half-open aware-datetime intervals [since, until). --since/--until
+accept a bare date (anchored to local midnight; a bare --until date is fully
+included) or an ISO datetime (e.g. a Jira sprint close instant). A session is
+pulled in when any of its prompts falls inside the window, but every metric is
+computed only from transcript entries inside the window, so a session spanning
+several windows contributes each entry to exactly one window and sessions with
+no in-window activity are dropped.
 
 Metrics extracted per session:
 - Thinking time: sum of turn_duration system entries (actual Claude compute)
 - Tool usage: tool calls by category
 - Documents: files created/modified via Write/Edit tool calls
-- Token usage: per-day, per-model input/output/cache token totals (deduplicated
-  by message id), written to tokens-by-day.json via --tokens-output
+- Token usage: per-day (local calendar day), per-model input/output/cache token
+  totals (deduplicated by message id), written to tokens-by-day.json via
+  --tokens-output
 
 Usage:
     uv run python3 src/work_journal/claude_code/collect_activity.py \
         --since 2026-02-13 --until 2026-02-26
     uv run python3 src/work_journal/claude_code/collect_activity.py \
-        --since 2026-02-13 --until 2026-02-26 --copy-raw DIR
+        --since 2026-02-13 --until 2026-02-26T17:00:00+00:00 --copy-raw DIR
 """
 
 import argparse
