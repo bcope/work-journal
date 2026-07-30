@@ -25,9 +25,11 @@ import os
 import shutil
 import sys
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TypedDict
+
+from work_journal.dates import resolve_window_bound
 
 DEFAULT_HISTORY_PATH = os.path.expanduser(
     os.environ.get("CLAUDE_HISTORY_PATH", "~/.claude/history.jsonl")
@@ -69,23 +71,18 @@ def repo_name(project_path: str) -> str:
 
 def load_history(
     history_path: str,
-    start_date: str,
-    end_date: str,
+    since_dt: datetime,
+    until_dt: datetime,
     work_dirs: list[str],
 ) -> dict[str, dict]:
     """Load history.jsonl and return work sessions grouped by session ID.
 
-    Each session ID maps to a list of history entries (there can be multiple
-    entries per session in history.jsonl). Returns only the first entry per
-    session (used for display text and timestamp).
+    A session is included when any of its prompts falls inside the half-open
+    window [since_dt, until_dt). Each session ID maps to its earliest
+    in-window history entry (used for display text and timestamp).
     """
-    start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC).timestamp() * 1000)
-    end_ts = int(
-        datetime.strptime(end_date, "%Y-%m-%d")
-        .replace(hour=23, minute=59, second=59, tzinfo=UTC)
-        .timestamp()
-        * 1000
-    )
+    since_ms = int(since_dt.timestamp() * 1000)
+    until_ms = int(until_dt.timestamp() * 1000)
 
     sessions: dict[str, dict] = {}
 
@@ -99,7 +96,7 @@ def load_history(
             project = entry.get("project", "")
             session_id = entry.get("sessionId", "")
 
-            if not (start_ts <= ts <= end_ts):
+            if not (since_ms <= ts < until_ms):
                 continue
             if not is_work_project(project, work_dirs):
                 continue
@@ -702,12 +699,12 @@ def main():
     parser.add_argument(
         "--since",
         required=True,
-        help="Start date (YYYY-MM-DD)",
+        help="Window start (YYYY-MM-DD or ISO datetime; bare date = local midnight)",
     )
     parser.add_argument(
         "--until",
         required=True,
-        help="End date (YYYY-MM-DD)",
+        help="Window end, exclusive (YYYY-MM-DD or ISO datetime; a bare date is fully included)",
     )
     parser.add_argument(
         "--history-path",
@@ -752,8 +749,16 @@ def main():
         print(f"Error: {args.history_path} not found.", file=sys.stderr)
         sys.exit(1)
 
+    since_dt = resolve_window_bound(args.since)
+    until_dt = resolve_window_bound(args.until, end=True)
+
+    # Interim day strings for the format/token functions (replaced by full
+    # datetime plumbing in the next change)
+    since_day = since_dt.astimezone().strftime("%Y-%m-%d")
+    until_day = (until_dt.astimezone() - timedelta(microseconds=1)).strftime("%Y-%m-%d")
+
     # Load and filter history
-    sessions = load_history(args.history_path, args.since, args.until, args.work_dirs)
+    sessions = load_history(args.history_path, since_dt, until_dt, args.work_dirs)
 
     if not sessions:
         print(
@@ -761,7 +766,7 @@ def main():
             file=sys.stderr,
         )
         # Still output valid markdown
-        print(format_markdown({}, args.since, args.until))
+        print(format_markdown({}, since_day, until_day))
         return
 
     print(
@@ -810,7 +815,7 @@ def main():
     if args.documents_output:
         docs_path = Path(args.documents_output)
         docs_path.parent.mkdir(parents=True, exist_ok=True)
-        docs_md = format_documents_markdown(sessions_by_project, args.since, args.until)
+        docs_md = format_documents_markdown(sessions_by_project, since_day, until_day)
         with open(docs_path, "w") as f:
             f.write(docs_md)
         print(f"Wrote documents report to {docs_path}", file=sys.stderr)
@@ -818,11 +823,11 @@ def main():
     # Write token usage artifact if requested
     if args.tokens_output:
         tokens_path = Path(args.tokens_output)
-        write_tokens_json(tokens_path, sessions_by_project, args.since, args.until)
+        write_tokens_json(tokens_path, sessions_by_project, since_day, until_day)
         print(f"Wrote token usage to {tokens_path}", file=sys.stderr)
 
     # Output sessions markdown to stdout
-    print(format_markdown(sessions_by_project, args.since, args.until))
+    print(format_markdown(sessions_by_project, since_day, until_day))
 
 
 if __name__ == "__main__":

@@ -1,12 +1,14 @@
 """Tests for claude_code/collect_activity.py."""
 
 import json
+from datetime import UTC, datetime, timedelta
 
 from work_journal.claude_code.collect_activity import (
     _format_count,
     aggregate_tokens_by_day,
     analyze_conversation,
     format_markdown,
+    load_history,
     write_tokens_json,
 )
 
@@ -82,6 +84,49 @@ def test_analyze_conversation_tokens_by_model_by_date(tmp_path):
 def test_analyze_conversation_missing_file_has_empty_tokens(tmp_path):
     metrics = analyze_conversation(str(tmp_path), "/Users/x/git/repo", "nope")
     assert metrics["tokens"] == {}
+
+
+def test_load_history_filters_by_datetime_window(tmp_path):
+    hist = tmp_path / "history.jsonl"
+    base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
+    entries = [
+        {
+            "display": "in",
+            "timestamp": int(base.timestamp() * 1000),
+            "project": "/Users/x/git/repo",
+            "sessionId": "s1",
+        },
+        {
+            "display": "before",
+            "timestamp": int((base - timedelta(days=2)).timestamp() * 1000),
+            "project": "/Users/x/git/repo",
+            "sessionId": "s2",
+        },
+        # Exactly at the until bound: excluded (half-open window)
+        {
+            "display": "at-until",
+            "timestamp": int(datetime(2026, 7, 16, tzinfo=UTC).timestamp() * 1000),
+            "project": "/Users/x/git/repo",
+            "sessionId": "s3",
+        },
+        # Non-work project: excluded
+        {
+            "display": "elsewhere",
+            "timestamp": int(base.timestamp() * 1000),
+            "project": "/Users/x/other/repo",
+            "sessionId": "s4",
+        },
+    ]
+    hist.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+    sessions = load_history(
+        str(hist),
+        datetime(2026, 7, 15, tzinfo=UTC),
+        datetime(2026, 7, 16, tzinfo=UTC),
+        ["/Users/x/git"],
+    )
+
+    assert set(sessions) == {"s1"}
 
 
 def test_aggregate_tokens_by_day_clamps_to_window():
