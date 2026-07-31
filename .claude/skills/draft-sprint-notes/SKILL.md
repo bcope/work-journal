@@ -165,6 +165,15 @@ messages inline.
 - **TODO markers:** If information is incomplete, add `TODO: description` so the user knows what to fill in.
 - **Enrichment gaps:** If `enrichment-summary.md` shows `low` or `none` coverage for a source, add `TODO: [source] enrichment had low coverage -- verify this manually` next to any accomplishment where that source would have provided supporting context (e.g., email decisions, meeting attendees, doc analysis).
 - **Tone:** Professional but not stiff. This is for sharing with a manager and team.
+- **No LLM signatures.** The draft should read like Barrett wrote it, not like a model did. Specifically:
+  - **No em dashes (—).** Use a period, comma, colon, semicolon, or parentheses instead — whichever the sentence actually calls for. En dashes in date ranges (`7/14 – 7/15`) are fine.
+  - No "X — Y" reframing pivots or "It's not X, it's Y" / "not just X but Y" contrast constructions.
+  - No cleft flourishes like "That's what converted...", "What this means is...", "The key insight is...".
+  - No "X rather than Y" more than once or twice per document; vary the construction.
+  - Don't bold single words or dates mid-sentence for emphasis. Bold is only for the metric phrases the doc series already uses (e.g., **67 rcptitems**) and headline conventions.
+  - Skip the stock vocabulary: "delve", "leverage", "robust", "seamless", "comprehensive", "crucial", "landscape", "streamline".
+  - Don't close sections with tidy summary sentences that restate what the section just said.
+  - Prefer plain sentences over stacked appositives; if a sentence needs three clauses hung off it, split it.
 
 #### Save the output
 
