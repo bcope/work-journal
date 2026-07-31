@@ -64,6 +64,26 @@ Additional guidelines:
 - Note skills or knowledge developed
 - Quantify impact wherever possible (percentages, dollar amounts, issue counts)
 
+**No LLM signatures.** The brief should read like Barrett wrote it, not like a
+model did. Specifically:
+
+- **No em dashes (—).** Use a period, comma, colon, semicolon, or parentheses
+  instead, whichever the sentence actually calls for. En dashes in date ranges
+  (`7/14 – 7/15`) are fine.
+- No "X — Y" reframing pivots or "It's not X, it's Y" / "not just X but Y"
+  contrast constructions.
+- No cleft flourishes like "That's what converted...", "What this means is...",
+  "The key insight is...".
+- No "X rather than Y" more than once or twice per document; vary the
+  construction.
+- Don't bold single words or dates mid-sentence for emphasis.
+- Skip the stock vocabulary: "delve", "leverage", "robust", "seamless",
+  "comprehensive", "crucial", "landscape", "streamline".
+- Don't close sections with tidy summary sentences that restate what the
+  section just said.
+- Prefer plain sentences over stacked appositives; if a sentence needs three
+  clauses hung off it, split it.
+
 ### Phase 4: Save the draft
 
 Save the draft as a Markdown file in `work/progress-briefs/{YEAR}-{QUARTER}/`.
